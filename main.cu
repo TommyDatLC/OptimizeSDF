@@ -1,40 +1,30 @@
+#include "MatrixMemoryManager.cpp"
+
 #include <iostream>
 #include <cuda.h>
 #include <cublas_v2.h>
-
-#include "MatrixMemoryManager.cpp"
+#include "ClipSpaceConversion.cpp"
 #include "Matrix.cpp"
 int main() {
-    auto matrixMemMang = MatrixMemoryManager();
-    Matrix& m1 = *matrixMemMang.CreateMatrix(4,3);
-    m1.Set(0,0,-1);
-    m1.Set(0,1,1);
-    m1.Set(0,2,-1);
-
-    m1.Set(1,0,5);
-    m1.Set(1,1,2);
-    m1.Set(1,2,-5);
-
-    m1.Set(2,0,6);
-    m1.Set(2,1,-5);
-    m1.Set(2,2,1);
-
-    m1.Set(3,0,-5);
-    m1.Set(3,1,-6);
-    m1.Set(3,2,0);
-
-    Matrix& m2 = *matrixMemMang.CreateMatrix(3,2);
-    m2.Set(0,0,6);
-    m2.Set(0,1,5);
-
-    m2.Set(1,0,5);
-    m2.Set(1,1,-6);
-
-    m2.Set(2,0,6);
-    m2.Set(2,1,0);
+    Matrix& m1 = matrixMemMang.CreateMatrix(4,2);
+    m1.Set(1,0,1);
+    m1.Set(1,0,2);
+    m1.Set(1,0,3);
+    m1.Set(1,0,4);
     m1.CopyToDevice();
-    m2.CopyToDevice();
-    Matrix m3 = m2 * m1;
-    m3.PrintOnGPU();
+    TransformData t_data;
+    t_data.Size = float3(1,1,1);
+    t_data.Translate = float3(3,4,5);
+    t_data.Rotation = float3(1,2,3);
+    ViewData v_data;
+    v_data.CameraUp = float3(0,1,0);
+    v_data.Position = float3(2,1,1);
+    v_data.LookAtX = float3(0,10,3);
+    PerspectiveCameraData p_data;
+    p_data.Far = 30;
+    p_data.Near = 10;
+    p_data.FOV = 50;
 
+    Matrix& FinalResult = ClippingSpaceConversion(t_data,v_data,p_data,m1);
+    FinalResult.PrintOnGPU();
 }

@@ -56,12 +56,14 @@ void Matrix::CopyToDevice() {
     cudaMemcpy(deviceMemory,hostMemory,totalSizeInMemory,cudaMemcpyHostToDevice);
 }
 
-Matrix Matrix::operator*(const Matrix &M) {
+Matrix& Matrix::operator*(const Matrix &M) {
     float* deviceResultmemory = nullptr;
     mul(*this,M,&deviceResultmemory);
-    Matrix result =  Matrix(Height,M.Width,cublasHandle);;
-    result.deviceMemory = deviceResultmemory;
-    return result;
+    Matrix *result = new Matrix(Height,M.Width,cublasHandle);
+    result->deviceMemory = deviceResultmemory;
+    Matrix& resRefer = *result;
+    matrixList.push_back(result);
+    return resRefer;
 }
 
 void Matrix::Print() {

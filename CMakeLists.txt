@@ -9,6 +9,8 @@ add_executable(OptimizeSDF main.cu
         MatrixMemoryManager.cpp
         MatrixMemoryManager.h
         MatrixUtils.cpp
+        ClipSpaceConversion.cpp
+        mathHelper.cpp
 )
 target_link_libraries(OptimizeSDF
         cublas

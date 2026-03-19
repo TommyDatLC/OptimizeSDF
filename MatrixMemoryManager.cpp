@@ -11,10 +11,11 @@ MatrixMemoryManager::MatrixMemoryManager()  {
     cublasCreate(&handle);
 }
 
-Matrix* MatrixMemoryManager::CreateMatrix(const int hieght,const int width) {
+Matrix &MatrixMemoryManager::CreateMatrix(const int hieght, const int width) {
     Matrix* createResult = new Matrix(hieght, width, handle);
     matrixList.push_back(createResult);
-    return createResult;
+    Matrix& resultRef = *createResult;
+    return resultRef;
 }
 
 void MatrixMemoryManager::removeAllMatrix() {

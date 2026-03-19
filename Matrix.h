@@ -38,12 +38,12 @@ public:
     void CopyToDevice();
 
     Matrix(int input_height, int input_width, cublasHandle_t cublas_handle_input);
-    Matrix operator*(const Matrix &M);
+    Matrix& operator*(const Matrix &M);
     void Print();
     void PrintOnGPU();
     float Get(int h,int w);
     void Set(int h,int w,float value);
 };
-
+std::vector<Matrix*> matrixList;
 
 #endif //OPTIMIZESDF_MATRIX_H
