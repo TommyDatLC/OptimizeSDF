@@ -14,7 +14,7 @@ Matrix::Matrix(const int input_height,
               const int input_width,
               cublasHandle_t cublas_handle_input) {
     totalElement = input_height*input_width;
-    hostMemory = new float[totalElement];
+    hostMemory = new float[totalElement] {0};
     totalSizeInMemory = sizeof(float) * totalElement;
     Width = input_width;
     Height = input_height;
@@ -43,6 +43,7 @@ void Matrix::mul(const Matrix &A,const Matrix &B, float **device_dest) {
        // C.deviceMemory,M.Width
        *device_dest,m
        );
+    cudaDeviceSynchronize();
 }
 
 
@@ -51,7 +52,9 @@ Matrix::~Matrix() {
     cudaFree(deviceMemory);
     delete hostMemory;
 }
-
+void Matrix::CopyToHost() {
+    cudaMemcpy(hostMemory,deviceMemory,totalSizeInMemory,cudaMemcpyDeviceToHost);
+}
 void Matrix::CopyToDevice() {
     cudaMemcpy(deviceMemory,hostMemory,totalSizeInMemory,cudaMemcpyHostToDevice);
 }
@@ -81,6 +84,9 @@ float Matrix::Get(int h, int w) {
 }
 
 void Matrix::Set(int h, int w,float value) {
+    if (h >= Height || w >= Width) {
+        std::__throw_runtime_error("Height or Width out of range");
+    }
     hostMemory[w * Height + h] = value;
 }
 

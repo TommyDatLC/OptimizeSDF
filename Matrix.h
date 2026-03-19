@@ -34,6 +34,9 @@ public:
         others.deviceMemory = nullptr;
     }
     ~Matrix();
+
+    void CopyToHost();
+
     int Height = 0,Width = 0;
     void CopyToDevice();
 

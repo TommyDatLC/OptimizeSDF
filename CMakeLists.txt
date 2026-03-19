@@ -17,3 +17,4 @@ target_link_libraries(OptimizeSDF
 )
 set_target_properties(OptimizeSDF PROPERTIES
         CUDA_SEPARABLE_COMPILATION ON)
+file(GLOB_RECURSE SOURCES "360.obj")

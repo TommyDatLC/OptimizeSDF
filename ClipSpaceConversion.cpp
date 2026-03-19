@@ -6,8 +6,11 @@ struct TransformData {
     float3 Translate;
     float3 Rotation; // Giả định là Euler angles (Pitch, Yaw, Roll) theo Radian
     float3 Size;     // Scale
+    Matrix *cache = 0;
 
     Matrix& GetMatrix() {
+        if (cache)
+            return *cache;
         Matrix& mat = matrixMemMang.CreateMatrix(4, 4);
 
         // Tính toán các giá trị lượng giác cho Rotation
@@ -42,6 +45,7 @@ struct TransformData {
 
 
         mat.CopyToDevice();
+        cache = &mat;
         return mat;
     }
 };
@@ -50,10 +54,13 @@ struct PerspectiveCameraData {
     float FOV;  // Dạng Radian
     float Near;
     float Far;
+    Matrix *cache = nullptr;
     // Bổ sung AspectRatio (chiều rộng / chiều cao của viewport). Mặc định là 16:9
     float AspectRatio = 16.0f / 9.0f;
 
     Matrix& GetMatrix() {
+        if (cache != nullptr)
+            return *cache;
         Matrix& mat = matrixMemMang.CreateMatrix(4, 4);
 
         // Công thức chuẩn Perspective Projection
@@ -66,6 +73,7 @@ struct PerspectiveCameraData {
         mat.Set(2, 3, (2.0f * Far * Near) / (Near - Far));
 
         mat.CopyToDevice();
+        cache = &mat;
         return mat;
     }
 };
@@ -75,8 +83,10 @@ struct ViewData {
     float3 LookAtX;  // Hiểu là Target (Điểm camera nhìn vào)
     float3 WorldUp;
     float3 CameraUp; // Trục Y hướng lên của Camera
-
+    Matrix *cache = 0;
     Matrix& GetMatrix() {
+        if (cache)
+            return *cache;
         Matrix& mat = matrixMemMang.CreateMatrix(4, 4);
 
         // Helper functions nội bộ xử lý vector (do CUDA float3 không có sẵn toán tử)
@@ -104,11 +114,15 @@ struct ViewData {
         mat.Set(3, 3, 1.0f);
 
         mat.CopyToDevice();
+        cache = &mat;
         return mat;
     }
 };
 Matrix& ClippingSpaceConversion(TransformData M, ViewData V, PerspectiveCameraData P,const Matrix& point_list) {
-    Matrix& clippingSpacePointList = M.GetMatrix() * V.GetMatrix() * P.GetMatrix() * point_list;
-    return clippingSpacePointList;
+    Matrix& MVP = M.GetMatrix() * V.GetMatrix() * P.GetMatrix() * point_list;
+    //std::cout << MVP.Height << "x" << MVP.Width << std::endl;
+   // std::cout << "MVP matrix: ";
+   //  MVP.PrintOnGPU();
+    return MVP;
 }
 #endif
