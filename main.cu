@@ -1,10 +1,11 @@
-#include "MatrixMemoryManager.cpp"
+#include "MatrixMemoryManager.cuh"
 
 #include <iostream>
 #include <cuda.h>
 #include <cublas_v2.h>
-#include "ClipSpaceConversion.cpp"
-#include "Matrix.cpp"
+#include "ClipSpaceConversion.hpp"
+#include "Matrix.cuh"
+#include "Model.h"
 
 //
 // void TestMatrix() {
@@ -75,10 +76,10 @@ int main() {
     m1.Set(3,0,3);
     m1.Set(2,0,4);
     m1.CopyToDevice();
-    TransformData t_data;
-    t_data.Size = float3(1,1,1);
-    t_data.Translate = float3(3,4,5);
-    t_data.Rotation = float3(1,2,3);
+    // TransformData t_data;
+    // t_data.Size = float3(1,1,1);
+    // t_data.Translate = float3(3,4,5);
+    // t_data.Rotation = float3(1,2,3);
     ViewData v_data;
     v_data.CameraUp = float3(3,1,0);
     v_data.Position = float3(2,1,1);
@@ -87,11 +88,17 @@ int main() {
     p_data.Far = 30;
     p_data.Near = 10;
     p_data.FOV = 50;
-    Matrix& model =  LoadVertexFromObj("360.obj");// nho ghi absolute path vo
-    model.CopyToDevice();
+    Model model = Model("360.obj");// nho ghi absolute path vo
+    model.Preview();
+   // model.CopyToDevice();
     //model.Print();
     std::cout << '\n';
     //m1.PrintOnGPU();
-    Matrix& FinalResult = ClippingSpaceConversion(t_data,v_data,p_data,model);
+    Matrix& modelVertMatrix = model.GetVertexMatrix();
+    modelVertMatrix.CopyToDevice();
+    Matrix& FinalResult = ClippingSpaceConversion(v_data,p_data,modelVertMatrix);
+    FinalResult.CopyToHost();
+    model.SetVertexMatrix(FinalResult);
+    model.Preview();
     FinalResult.PrintOnGPU();
 }

@@ -2,20 +2,24 @@
 // Created by tommydatlc on 3/17/26.
 //
 
-#include "MatrixMemoryManager.h"
+#include "MatrixMemoryManager.cuh"
 #include <cublas_v2.h>
 #include <memory>
 
-#include "Matrix.h"
+#include "Matrix.cuh"
 MatrixMemoryManager::MatrixMemoryManager()  {
     cublasCreate(&handle);
 }
 
 Matrix &MatrixMemoryManager::CreateMatrix(const int hieght, const int width) {
-    Matrix* createResult = new Matrix(hieght, width, handle);
-    matrixList.push_back(createResult);
-    Matrix& resultRef = *createResult;
+    Matrix& resultRef = *CreateMatrixPointer(hieght, width);
     return resultRef;
+}
+
+Matrix* MatrixMemoryManager::CreateMatrixPointer(const int h,const int w) {
+    Matrix* createResult = new Matrix(h, w, handle);
+    matrixList.push_back(createResult);
+    return createResult;
 }
 
 void MatrixMemoryManager::removeAllMatrix() {

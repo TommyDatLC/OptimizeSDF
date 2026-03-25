@@ -1,5 +1,8 @@
-#include <cmath>
+#ifndef MATH_HELPER
+#define MATH_HELPER
 
+#include <cmath>
+#include <vector_types.h>
 // Cấu trúc dữ liệu float3 cơ bản
 
 
@@ -34,3 +37,4 @@ inline float3 normalize(float3 v) {
     }
     return v;
 }
+#endif

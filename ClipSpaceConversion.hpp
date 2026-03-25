@@ -1,7 +1,7 @@
 #ifndef CLIPPING_SPACE
 #define CLIPPING_SPACE
-#include "MatrixMemoryManager.h"
-#include "mathHelper.cpp"
+#include "MatrixMemoryManager.cuh"
+#include "mathHelper.cu"
 struct TransformData {
     float3 Translate;
     float3 Rotation; // Giả định là Euler angles (Pitch, Yaw, Roll) theo Radian
@@ -118,6 +118,13 @@ struct ViewData {
         return mat;
     }
 };
+Matrix& ClippingSpaceConversion(ViewData V, PerspectiveCameraData P,const Matrix& point_list) {
+    Matrix& MVP = P.GetMatrix() * V.GetMatrix() * point_list;
+    //std::cout << MVP.Height << "x" << MVP.Width << std::endl;
+    // std::cout << "MVP matrix: ";
+    //  MVP.PrintOnGPU();
+    return MVP;
+}
 Matrix& ClippingSpaceConversion(TransformData M, ViewData V, PerspectiveCameraData P,const Matrix& point_list) {
     Matrix& MVP = M.GetMatrix() * V.GetMatrix() * P.GetMatrix() * point_list;
     //std::cout << MVP.Height << "x" << MVP.Width << std::endl;

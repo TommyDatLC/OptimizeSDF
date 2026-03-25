@@ -4,8 +4,9 @@
 
 #ifndef OPTIMIZESDF_MATRIX_H
 #define OPTIMIZESDF_MATRIX_H
+#define CUBLASAPI
 #include <cublas_api.h>
-
+#include <vector>
 
 class Matrix {
 private:
@@ -47,6 +48,6 @@ public:
     float Get(int h,int w);
     void Set(int h,int w,float value);
 };
-std::vector<Matrix*> matrixList;
+inline std::vector<Matrix*> matrixList;
 
 #endif //OPTIMIZESDF_MATRIX_H

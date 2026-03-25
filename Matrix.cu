@@ -2,23 +2,23 @@
 // Created by tommydatlc on 3/17/26.
 //
 
-#include "Matrix.h"
-
+#define CUBLAS_API
+#include "Matrix.cuh"
 #include <cstdio>
 #include <cublas_api.h>
 #include <cublas_v2.h>
 #include <cuda.h>
-#include "MatrixUtils.cpp"
+#include "MatrixUtils.cuh"
 
 Matrix::Matrix(const int input_height,
-              const int input_width,
-              cublasHandle_t cublas_handle_input) {
+               const int input_width,
+               cublasHandle_t cublas_handle_input) {
     totalElement = input_height*input_width;
     hostMemory = new float[totalElement] {0};
     totalSizeInMemory = sizeof(float) * totalElement;
     Width = input_width;
     Height = input_height;
-    cudaMalloc(&deviceMemory,totalSizeInMemory);
+    cudaMalloc((void**)&deviceMemory,totalSizeInMemory);
     cublasHandle = cublas_handle_input;
 }
 
@@ -32,7 +32,7 @@ void Matrix::mul(const Matrix &A,const Matrix &B, float **device_dest) {
     int m = A.Height;
     int k = A.Width;
     int n = B.Width;
-    cudaMalloc(device_dest,sizeof(float) * m * n);
+    cudaMalloc((void**)device_dest,sizeof(float) * m * n);
     if (A.deviceMemory == nullptr || B.deviceMemory == nullptr) {
         std::__throw_runtime_error("device memory has been not allocated");
     }

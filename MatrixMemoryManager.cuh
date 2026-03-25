@@ -9,7 +9,7 @@
 #include <cublas_api.h>
 #include <memory>
 #include <vector>
-#include "Matrix.h"
+#include "Matrix.cuh"
 
 class MatrixMemoryManager {
 
@@ -17,10 +17,11 @@ class MatrixMemoryManager {
     MatrixMemoryManager();
 
     Matrix &CreateMatrix(int h, int w);
+    Matrix* CreateMatrixPointer(int h, int w);
     void removeAllMatrix();
     cublasHandle_t handle = nullptr;
     ~MatrixMemoryManager();
 };
-auto matrixMemMang = MatrixMemoryManager();
+inline auto matrixMemMang = MatrixMemoryManager();
 
 #endif //OPTIMIZESDF_MATRIXMEMORYMANAGER_H
