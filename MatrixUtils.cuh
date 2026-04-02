@@ -19,6 +19,9 @@ __host__ __device__ void printMemory(float* mem_region,int height,int width) {
 __global__ void printOnGPUKernel(float* mem_region,int height,int width) {
     printMemory(mem_region,height,width);
 }
+
+
+
 //
 // Matrix& LoadVertexFromObj(std::string objFile) {
 //     std::vector<float3> vertices;

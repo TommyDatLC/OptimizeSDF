@@ -12,7 +12,7 @@ inline float3 sub(const float3& a, const float3& b) {
 }
 
 
-inline float3 cross(const float3& a, const float3& b) {
+inline __device__ __host__ float3 cross(const float3& a, const float3& b) {
     return float3{
         a.y * b.z - a.z * b.y,
         a.z * b.x - a.x * b.z,
@@ -36,5 +36,9 @@ inline float3 normalize(float3 v) {
         v.z /= len;
     }
     return v;
+}
+
+inline __device__ float3 operator-(const float3& a, const float3& b) {
+    return float3(a.x - b.x, a.y - b.y, a.z - b.z);
 }
 #endif

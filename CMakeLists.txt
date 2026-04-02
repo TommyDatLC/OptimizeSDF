@@ -20,6 +20,7 @@ add_executable(OptimizeSDF main.cu
         mathHelper.cu
         Model.cpp
         Model.h
+        ModelHelper.cu
 )
 target_link_libraries(OptimizeSDF
         PRIVATE
@@ -29,4 +30,4 @@ target_link_libraries(OptimizeSDF
 
 set_target_properties(OptimizeSDF PROPERTIES
         CUDA_SEPARABLE_COMPILATION ON)
-file(COPY "360.obj" DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+file(COPY "Model" DESTINATION ${CMAKE_CURRENT_BINARY_DIR})

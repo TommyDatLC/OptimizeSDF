@@ -11,6 +11,8 @@
 #include <stdexcept>
 
 // Include thư viện Polyscope
+#include "cmake-build-debug/_deps/polyscope-src/include/polyscope/polyscope.h"
+#include "cmake-build-debug/_deps/polyscope-src/include/polyscope/surface_mesh.h"
 #include "polyscope/polyscope.h"
 #include "polyscope/surface_mesh.h"
 
@@ -98,10 +100,10 @@ Matrix& Model::GetVertexMatrix() {
 
     // Nạp dữ liệu vào ma trận (Bỏ comment và sửa lại hàm SetValue theo class Matrix của bạn)
     for (size_t col = 0; col < Vertices.size(); ++col) {
-        cacheVertexMatrix->Set(0, col, Vertices[col].x);
-        cacheVertexMatrix->Set(1, col, Vertices[col].y);
-        cacheVertexMatrix->Set(2, col, Vertices[col].z);
-        cacheVertexMatrix->Set(3, col, 1);
+        cacheVertexMatrix->SetHost(0, col, Vertices[col].x);
+        cacheVertexMatrix->SetHost(1, col, Vertices[col].y);
+        cacheVertexMatrix->SetHost(2, col, Vertices[col].z);
+        cacheVertexMatrix->SetHost(3, col, 1);
     }
 
     return *cacheVertexMatrix;
@@ -115,9 +117,9 @@ Matrix& Model::GetVertexIndicesMatrix() {
     cacheIndicesMatrix = matrixMemMang.CreateMatrixPointer(3, VertexIndices.size());
 
     for (size_t col = 0; col < VertexIndices.size(); ++col) {
-        cacheIndicesMatrix->Set(0, col, VertexIndices[col].x);
-        cacheIndicesMatrix->Set(1, col, VertexIndices[col].y);
-        cacheIndicesMatrix->Set(2, col, VertexIndices[col].z);
+        cacheIndicesMatrix->SetHost(0, col, VertexIndices[col].x);
+        cacheIndicesMatrix->SetHost(1, col, VertexIndices[col].y);
+        cacheIndicesMatrix->SetHost(2, col, VertexIndices[col].z);
     }
 
     return *cacheIndicesMatrix;
@@ -137,9 +139,9 @@ void Model::SetVertexMatrix(Matrix& newVertex) {
     // 4. Cập nhật lại vector Vertices từ ma trận
     // Sử dụng hàm Get(h, w) - trong đó h (hàng) là x, y, z; w (cột) là index của đỉnh
     for (int col = 0; col < numVertices; ++col) {
-        Vertices[col].x = newVertex.Get(0, col); // Hàng 0 là X
-        Vertices[col].y = newVertex.Get(1, col); // Hàng 1 là Y
-        Vertices[col].z = newVertex.Get(2, col); // Hàng 2 là Z
+        Vertices[col].x = newVertex.GetHost(0, col); // Hàng 0 là X
+        Vertices[col].y = newVertex.GetHost(1, col); // Hàng 1 là Y
+        Vertices[col].z = newVertex.GetHost(2, col); // Hàng 2 là Z
     }
 
     // 5. Reset lại cache pointer để lần sau gọi GetVertexMatrix(),
@@ -150,9 +152,7 @@ void Model::SetVertexMatrix(Matrix& newVertex) {
 // ---------------------------------------------------------
 // 4. PREVIEW VỚI POLYSCOPE
 // ---------------------------------------------------------
-void Model::Preview() {
-    polyscope::init();
-
+void Model::AddToScene(std::string name) {
     std::vector<std::array<double, 3>> pts;
     pts.reserve(Vertices.size());
     for(const auto& v : Vertices) {
@@ -165,6 +165,5 @@ void Model::Preview() {
         faces.push_back({(size_t)f.x, (size_t)f.y, (size_t)f.z});
     }
 
-    polyscope::registerSurfaceMesh("Preview Model", pts, faces);
-    polyscope::show();
+    polyscope::registerSurfaceMesh(name, pts, faces);
 }

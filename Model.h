@@ -26,7 +26,8 @@ private:
     Matrix& GetVertexIndicesMatrix();// loading the the index as adjection matrix, save into cache, if cache not null, return the cache instead
     void SetVertexMatrix(Matrix &newVertex);// replace the cache matrix, and replace the Vertices vector using the newMatrix
     void SaveObjFile(std::string filename); // save object as an obj file
-    void Preview(); // Preview by using Polyscope
+    void AddToScene(std::string name = "a"); // Preview by using Polyscope
+
 };
 
 

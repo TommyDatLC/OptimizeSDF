@@ -20,28 +20,28 @@ struct TransformData {
 
         // Khởi tạo ma trận T * R * S (Dữ liệu lưu theo Cột - Column Major)
         // Cột 0
-        mat.Set(0, 0, (cy * cz) * Size.x);
-        mat.Set(1, 0, (cy * sz) * Size.x);
-        mat.Set(2, 0, (-sy) * Size.x);
-        mat.Set(3, 0, 0.0f);
+        mat.SetHost(0, 0, (cy * cz) * Size.x);
+        mat.SetHost(1, 0, (cy * sz) * Size.x);
+        mat.SetHost(2, 0, (-sy) * Size.x);
+        mat.SetHost(3, 0, 0.0f);
 
         // Cột 1
-        mat.Set(0, 1, (sx * sy * cz - cx * sz) * Size.y);
-        mat.Set(1, 1, (sx * sy * sz + cx * cz) * Size.y);
-        mat.Set(2, 1, (sx * cy) * Size.y);
-        mat.Set(3, 1, 0.0f);
+        mat.SetHost(0, 1, (sx * sy * cz - cx * sz) * Size.y);
+        mat.SetHost(1, 1, (sx * sy * sz + cx * cz) * Size.y);
+        mat.SetHost(2, 1, (sx * cy) * Size.y);
+        mat.SetHost(3, 1, 0.0f);
 
         // Cột 2
-        mat.Set(0, 2, (cx * sy * cz + sx * sz) * Size.z);
-        mat.Set(1, 2, (cx * sy * sz - sx * cz) * Size.z);
-        mat.Set(2, 2, (cx * cy) * Size.z);
-        mat.Set(3, 2, 0.0f);
+        mat.SetHost(0, 2, (cx * sy * cz + sx * sz) * Size.z);
+        mat.SetHost(1, 2, (cx * sy * sz - sx * cz) * Size.z);
+        mat.SetHost(2, 2, (cx * cy) * Size.z);
+        mat.SetHost(3, 2, 0.0f);
 
         // Cột 3 (Translation)
-        mat.Set(0, 3, Translate.x);
-        mat.Set(1, 3, Translate.y);
-        mat.Set(2, 3, Translate.z);
-        mat.Set(3, 3, 1.0f);
+        mat.SetHost(0, 3, Translate.x);
+        mat.SetHost(1, 3, Translate.y);
+        mat.SetHost(2, 3, Translate.z);
+        mat.SetHost(3, 3, 1.0f);
 
 
         mat.CopyToDevice();
@@ -66,11 +66,11 @@ struct PerspectiveCameraData {
         // Công thức chuẩn Perspective Projection
         float f = 1.0f / tanf(FOV * 0.5f);
 
-        mat.Set(0, 0, f / AspectRatio);
-        mat.Set(1, 1, f);
-        mat.Set(2, 2, (Far + Near) / (Near - Far));
-        mat.Set(3, 2, -1.0f);
-        mat.Set(2, 3, (2.0f * Far * Near) / (Near - Far));
+        mat.SetHost(0, 0, f / AspectRatio);
+        mat.SetHost(1, 1, f);
+        mat.SetHost(2, 2, (Far + Near) / (Near - Far));
+        mat.SetHost(3, 2, -1.0f);
+        mat.SetHost(2, 3, (2.0f * Far * Near) / (Near - Far));
 
         mat.CopyToDevice();
         cache = &mat;
@@ -81,7 +81,7 @@ struct PerspectiveCameraData {
 struct ViewData {
     float3 Position; // ĐÃ BỔ SUNG: Bắt buộc phải có vị trí camera
     float3 LookAtX;  // Hiểu là Target (Điểm camera nhìn vào)
-    float3 WorldUp;
+
     float3 CameraUp; // Trục Y hướng lên của Camera
     Matrix *cache = 0;
     Matrix& GetMatrix() {
@@ -96,22 +96,22 @@ struct ViewData {
         float3 yaxis = cross(zaxis, xaxis);               // Up thực tế
 
         // Xây dựng View Matrix (LookAt Matrix)
-        mat.Set(0, 0, xaxis.x);
-        mat.Set(0, 1, xaxis.y);
-        mat.Set(0, 2, xaxis.z);
-        mat.Set(0, 3, -dot(xaxis, Position));
+        mat.SetHost(0, 0, xaxis.x);
+        mat.SetHost(0, 1, xaxis.y);
+        mat.SetHost(0, 2, xaxis.z);
+        mat.SetHost(0, 3, -dot(xaxis, Position));
 
-        mat.Set(1, 0, yaxis.x);
-        mat.Set(1, 1, yaxis.y);
-        mat.Set(1, 2, yaxis.z);
-        mat.Set(1, 3, -dot(yaxis, Position));
+        mat.SetHost(1, 0, yaxis.x);
+        mat.SetHost(1, 1, yaxis.y);
+        mat.SetHost(1, 2, yaxis.z);
+        mat.SetHost(1, 3, -dot(yaxis, Position));
 
-        mat.Set(2, 0, zaxis.x);
-        mat.Set(2, 1, zaxis.y);
-        mat.Set(2, 2, zaxis.z);
-        mat.Set(2, 3, -dot(zaxis, Position));
+        mat.SetHost(2, 0, zaxis.x);
+        mat.SetHost(2, 1, zaxis.y);
+        mat.SetHost(2, 2, zaxis.z);
+        mat.SetHost(2, 3, -dot(zaxis, Position));
 
-        mat.Set(3, 3, 1.0f);
+        mat.SetHost(3, 3, 1.0f);
 
         mat.CopyToDevice();
         cache = &mat;
@@ -126,7 +126,7 @@ Matrix& ClippingSpaceConversion(ViewData V, PerspectiveCameraData P,const Matrix
     return MVP;
 }
 Matrix& ClippingSpaceConversion(TransformData M, ViewData V, PerspectiveCameraData P,const Matrix& point_list) {
-    Matrix& MVP = M.GetMatrix() * V.GetMatrix() * P.GetMatrix() * point_list;
+    Matrix& MVP =  V.GetMatrix()  * P.GetMatrix() * M.GetMatrix() * point_list;
     //std::cout << MVP.Height << "x" << MVP.Width << std::endl;
    // std::cout << "MVP matrix: ";
    //  MVP.PrintOnGPU();

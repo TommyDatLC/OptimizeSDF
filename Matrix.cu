@@ -59,6 +59,9 @@ void Matrix::CopyToDevice() {
     cudaMemcpy(deviceMemory,hostMemory,totalSizeInMemory,cudaMemcpyHostToDevice);
 }
 
+bool Matrix::IsInit() {
+}
+
 Matrix& Matrix::operator*(const Matrix &M) {
     float* deviceResultmemory = nullptr;
     mul(*this,M,&deviceResultmemory);
@@ -78,15 +81,29 @@ void Matrix::PrintOnGPU() {
     cudaDeviceSynchronize();
 }
 
-
-float Matrix::Get(int h, int w) {
-    return hostMemory[w * Height + h];
+float Matrix::GetHost(int h, int w) {
+    Get(h,w,hostMemory);
+}
+float Matrix::GetDevice(int h, int w) {
+    Get(h,w,deviceMemory);
 }
 
-void Matrix::Set(int h, int w,float value) {
+void Matrix::SetHost(int h, int w, float value) {
+    Set(h,w,value,hostMemory);
+}
+
+void Matrix::SetDevice(int h, int w, float value) {
+    Set(h,w,value,deviceMemory);
+}
+float Matrix::Get(int h, int w,float* mem_Region) {
+    return mem_Region[w * Height + h];
+}
+
+void Matrix::Set(int h, int w,float value,float* mem_Region) {
     if (h >= Height || w >= Width) {
         std::__throw_runtime_error("Height or Width out of range");
     }
-    hostMemory[w * Height + h] = value;
+    mem_Region[w * Height + h] = value;
 }
+
 

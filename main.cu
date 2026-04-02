@@ -6,6 +6,8 @@
 #include "ClipSpaceConversion.hpp"
 #include "Matrix.cuh"
 #include "Model.h"
+#include "ModelHelper.cu"
+#include "cmake-build-debug/_deps/polyscope-src/include/polyscope/polyscope.h"
 
 //
 // void TestMatrix() {
@@ -69,36 +71,39 @@
 //     Ans4.PrintOnGPU(); // Kỳ vọng: [-13, -19], [-11, -1]
 // }
 int main() {
+
+    polyscope::init();
     // TestMatrix();
-    Matrix& m1 = matrixMemMang.CreateMatrix(4,2);
-    m1.Set(0,0,1);
-    m1.Set(1,0,2);
-    m1.Set(3,0,3);
-    m1.Set(2,0,4);
-    m1.CopyToDevice();
-    // TransformData t_data;
-    // t_data.Size = float3(1,1,1);
-    // t_data.Translate = float3(3,4,5);
-    // t_data.Rotation = float3(1,2,3);
-    ViewData v_data;
-    v_data.CameraUp = float3(3,1,0);
-    v_data.Position = float3(2,1,1);
-    v_data.LookAtX = float3(1,10,3);
-    PerspectiveCameraData p_data;
-    p_data.Far = 30;
-    p_data.Near = 10;
-    p_data.FOV = 50;
-    Model model = Model("360.obj");// nho ghi absolute path vo
-    model.Preview();
-   // model.CopyToDevice();
-    //model.Print();
-    std::cout << '\n';
-    //m1.PrintOnGPU();
-    Matrix& modelVertMatrix = model.GetVertexMatrix();
-    modelVertMatrix.CopyToDevice();
-    Matrix& FinalResult = ClippingSpaceConversion(v_data,p_data,modelVertMatrix);
-    FinalResult.CopyToHost();
-    model.SetVertexMatrix(FinalResult);
-    model.Preview();
-    FinalResult.PrintOnGPU();
+   //  Matrix& m1 = matrixMemMang.CreateMatrix(4,2);
+   //  m1.Set(0,0,1);
+   //  m1.Set(1,0,2);
+   //  m1.Set(3,0,3);
+   //  m1.Set(2,0,4);
+   //  m1.CopyToDevice();
+   //  // TransformData t_data;
+   //  // t_data.Size = float3(1,1,1);
+   //  // t_data.Translate = float3(3,4,5);
+   //  // t_data.Rotation = float3(1,2,3);
+   //  ViewData v_data;
+   //  v_data.CameraUp = float3(3,1,0);
+   //  v_data.Position = float3(2,1,1);
+   //  v_data.LookAtX = float3(1,10,3);
+   //  PerspectiveCameraData p_data;
+   //  p_data.Far = 30;
+   //  p_data.Near = 10;
+   //  p_data.FOV = 40;
+   //  Model model = Model("360.obj");// nho ghi absolute path vo
+   //  model.AddToScene("model2");
+   // // model.CopyToDevice();
+   //  //model.Print();
+   //  std::cout << '\n';
+   //  //m1.PrintOnGPU();
+   //  Matrix& modelVertMatrix = model.GetVertexMatrix();
+   //  modelVertMatrix.CopyToDevice();
+   //  Matrix& FinalResult = ClippingSpaceConversion(v_data,p_data,modelVertMatrix);
+   //  FinalResult.CopyToHost();
+   //  model.SetVertexMatrix(FinalResult);
+   //  model.AddToScene("model1");
+   //  polyscope::show();
+   //  FinalResult.PrintOnGPU();
 }

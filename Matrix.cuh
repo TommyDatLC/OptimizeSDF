@@ -17,6 +17,8 @@ private:
     size_t totalSizeInMemory = 0;
 
     void mul(const Matrix &A, const Matrix &B, float **device_dest);
+    float Get(int h,int w,float* mem_Region);
+    void Set(int h,int w,float value,float* mem_Region);
     Matrix(float* deviceMemory);
 public:
     // Move constructor
@@ -40,13 +42,15 @@ public:
 
     int Height = 0,Width = 0;
     void CopyToDevice();
-
+    bool IsInit();
     Matrix(int input_height, int input_width, cublasHandle_t cublas_handle_input);
     Matrix& operator*(const Matrix &M);
     void Print();
     void PrintOnGPU();
-    float Get(int h,int w);
-    void Set(int h,int w,float value);
+    float GetHost(int h,int w);
+    void SetHost(int h,int w,float value);
+    __device__ float GetDevice(int h, int w);
+    __device__ void SetDevice(int h, int w, float value);
 };
 inline std::vector<Matrix*> matrixList;
 
