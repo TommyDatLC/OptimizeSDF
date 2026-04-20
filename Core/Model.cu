@@ -214,7 +214,7 @@ void Model::ToClipSpace(ViewData& V, PerspectiveCameraData& P) {
 }
 
 // Display in the engine
-void Model::AddToScene(std::string name, bool displayNormal) {
+void Model::AddToScene(std::string name, bool displayNormal ) {
     // 1. Đăng ký bề mặt mesh
     auto* psMesh = polyscope::registerSurfaceMesh(name, vertex, faces);
 

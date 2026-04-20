@@ -34,9 +34,9 @@ int main() {
         p_data.Near = 10;
         p_data.FOV = 40;
         Model model = Model("Model/360.obj");// nho ghi absolute path vo
-        // model.UpdateNormal();
-        CaculatingSDFUsingOptix(model);
-
-        // model.ToClipSpace(v_data,p_data);
+        model.UpdateNormal();
+        model.ToClipSpace(v_data,p_data);
+        model.AddToScene();
         polyscope::show();
+        //CaculatingSDFUsingOptix(model);
 }

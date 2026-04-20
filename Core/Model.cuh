@@ -33,7 +33,7 @@ public:
 
     // replace the cache matrix, and replace the Vertices vector using the newMatrix
     void SaveObjFile(std::string filename); // save object as an obj file
-    void AddToScene(std::string name = "model", bool displayNormal = false); // Preview by using Polyscope
+    void AddToScene(std::string name = "model", bool displayNormal = true); // Preview by using Polyscope
     void UpdateNormal();
     void AddHeatMapVertexForPreviewEngine(int vertexIndex, double attribute);
     void ToClipSpace(ViewData &V, PerspectiveCameraData &P);

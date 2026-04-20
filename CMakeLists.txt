@@ -31,7 +31,6 @@ add_executable(OptimizeSDF
         Core/Model.cuh
         Core/ModelHelper.cu
         NormalSDFOptix/SDFMain.cpp
-
 )
 add_library(OptixShaders OBJECT NormalSDFOptix/SDFOptix.cu)
 
@@ -40,7 +39,7 @@ set_property(TARGET OptixShaders PROPERTY CUDA_PTX_COMPILATION ON)
 
 # 3. Đảm bảo Shader này đọc được các file header của OptiX và thư mục Core
 target_include_directories(OptixShaders PRIVATE
-        /home/datdau/CUDA/OptimizeSDF/OptiX
+        ${CMAKE_CURRENT_SOURCE_DIR}/OptiX
         ${CMAKE_CURRENT_SOURCE_DIR}/Core
 )
 

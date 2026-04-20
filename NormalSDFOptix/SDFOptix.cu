@@ -33,26 +33,40 @@ __device__ float2 GetRandomFloat2(unsigned int id, unsigned int sample) {
 
 // 3. HÀM SINH TIA TRONG HÌNH NÓN (Uniform Cone Sampling)
 __device__ float3 SampleCone(float3 normal, float2 randVal, float angleRad) {
-    // randVal.x và randVal.y nằm trong khoảng [0, 1]
-    float cosTheta = cosf(angleRad);
-    float z = 1.0f - randVal.x * (1.0f - cosTheta);
-    float radius = sqrtf(max(0.0f, 1.0f - z * z));
+    // 1. Lật ngược Normal để đâm vào trong khối
+    float3 invertedNormal = make_float3(-normal.x, -normal.y, -normal.z);
+
+    // 2. TƯ DUY MỚI: Tưởng tượng một cái "Bia bắn cung" hình tròn phẳng
+    // Đặt cái bia này cách điểm bắn đúng 1 mét (z = 1).
+    // Dùng lượng giác cơ bản: Bán kính lớn nhất của bia = tan(góc_mở)
+    float maxRadius = tanf(angleRad);
+
+    // 3. CHỌN MỘT ĐIỂM NGẪU NHIÊN BÊN TRONG DIỆN TÍCH HÌNH TRÒN ĐÓ
+    // BÍ THUẬT: Phải có Căn Bậc Hai sqrtf() thì đạn mới tản đều khắp mặt bia.
+    // Nếu không có căn, đạn sẽ bị túm tụm dày đặc ở hồng tâm.
+    float r = maxRadius * sqrtf(randVal.x);
     float phi = 2.0f * 3.14159265f * randVal.y;
 
-    // Tọa độ cục bộ của tia trong không gian nón (trục Z hướng lên)
-    float x = radius * cosf(phi);
-    float y = radius * sinf(phi);
+    // Tọa độ của viên đạn TRÊN MẶT BIA PHẲNG
+    float x = r * cosf(phi);
+    float y = r * sinf(phi);
+    float z = 1.0f; // Luôn nằm trên mặt phẳng z = 1
 
-    // Tạo hệ tọa độ cục bộ (TBN) từ Normal để xoay nón về đúng hướng
-    float3 up = (abs(normal.z) < 0.999f) ? make_float3(0,0,1) : make_float3(1,0,0);
-    float3 tangent = normalize(cross(up, normal));
-    float3 bitangent = cross(normal, tangent);
+    // 4. CHUẨN HÓA LẠI ĐỘ DÀI
+    // Tia đạn bắn từ mắt (0,0,0) tới điểm (x,y,1) trên bia sẽ dài hơn 1.
+    // Ta BẮT BUỘC phải gọi normalize() để gọt nó về độ dài đúng bằng 1 cho OptiX.
+    float3 localRay = normalize(make_float3(x, y, z));
 
-    // Xoay tia từ không gian cục bộ sang không gian thế giới
+    // 5. TẠO TBN VÀ XOAY TIA VÀO BỀ MẶT MÔ HÌNH (Giữ nguyên như cũ)
+    float3 up = (abs(invertedNormal.z) < 0.999f) ? make_float3(0,0,1) : make_float3(1,0,0);
+    float3 tangent = normalize(cross(up, invertedNormal));
+    float3 bitangent = cross(invertedNormal, tangent);
+
+    // Nhân ma trận TBN với tọa độ tia cục bộ
     return make_float3(
-        tangent.x * x + bitangent.x * y + normal.x * z,
-        tangent.y * x + bitangent.y * y + normal.y * z,
-        tangent.z * x + bitangent.z * y + normal.z * z
+        tangent.x * localRay.x + bitangent.x * localRay.y + invertedNormal.x * localRay.z,
+        tangent.y * localRay.x + bitangent.y * localRay.y + invertedNormal.y * localRay.z,
+        tangent.z * localRay.x + bitangent.z * localRay.y + invertedNormal.z * localRay.z
     );
 }
 
@@ -93,7 +107,6 @@ extern "C" __global__ void __raygen__sdf_cone() {
             hitCount++;
         }
     }
-
     float avgDistance = (hitCount > 0) ? (totalDistance / hitCount) : 0.0f;
     params.outputSDF[idx.x] = avgDistance;
 }
