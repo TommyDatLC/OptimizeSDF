@@ -9,6 +9,7 @@
 #include <cublas_v2.h>
 #include <cuda.h>
 #include "MatrixUtils.cuh"
+#include "glm/gtc/type_ptr.hpp"
 
 Matrix::Matrix(const int input_height,
                const int input_width,
@@ -46,9 +47,9 @@ void Matrix::mul(const Matrix &A,const Matrix &B, float **device_dest) {
     cudaDeviceSynchronize();
 }
 
-
-
 Matrix::~Matrix() {
+    if (!isOwned)
+        return;
     cudaFree(deviceMemory);
     delete hostMemory;
 }
@@ -60,6 +61,7 @@ void Matrix::CopyToDevice() {
 }
 
 bool Matrix::IsInit() {
+    return false;
 }
 
 Matrix& Matrix::operator*(const Matrix &M) {
@@ -82,10 +84,46 @@ void Matrix::PrintOnGPU() {
 }
 
 float Matrix::GetHost(int h, int w) {
-    Get(h,w,hostMemory);
+    return Get(h,w,hostMemory);
 }
 float Matrix::GetDevice(int h, int w) {
-    Get(h,w,deviceMemory);
+    return Get(h,w,deviceMemory);
+}
+float* Matrix::getDevicePtr() const { return deviceMemory; }
+
+void Matrix::CPUTranspose() {
+    // 1. Đồng bộ dữ liệu từ GPU về CPU trước khi xử lý
+    if (Height == 4 && Width == 4) {
+        // Tối ưu hóa cho ma trận 4x4 (thường dùng cho View/Model Matrix)
+        glm::mat4 m = glm::make_mat4(hostMemory);
+        m = glm::transpose(m);
+        std::memcpy(hostMemory, glm::value_ptr(m), totalSizeInMemory);
+    } else if (Height == 3 && Width == 3) {
+        glm::mat3 m = glm::make_mat3(hostMemory);
+        m = glm::transpose(m);
+        std::memcpy(hostMemory, glm::value_ptr(m), totalSizeInMemory);
+    }
+    // 2. Đẩy dữ liệu đã xử lý ngược lại GPU
+
+}
+void Matrix::CPUInverse() {
+    if (Height != Width) {
+        throw std::runtime_error("Phep nghich dao chi ap dung cho ma tran vuong.");
+    }
+    if (Height == 4) {
+        glm::mat4 m = glm::make_mat4(hostMemory);
+        m = glm::inverse(m);
+        std::memcpy(hostMemory, glm::value_ptr(m), totalSizeInMemory);
+    } else if (Height == 3) {
+        glm::mat3 m = glm::make_mat3(hostMemory);
+        m = glm::inverse(m);
+        std::memcpy(hostMemory, glm::value_ptr(m), totalSizeInMemory);
+    } else {
+        throw std::runtime_error("Hien tai GLM chi ho tro nghich dao mat3 va mat4 trong code nay.");
+    }
+}
+size_t Matrix::GetSize() {
+    return totalSizeInMemory;
 }
 
 void Matrix::SetHost(int h, int w, float value) {

@@ -1,5 +1,6 @@
 #ifndef CLIPPING_SPACE
 #define CLIPPING_SPACE
+
 #include "MatrixMemoryManager.cuh"
 #include "mathHelper.cu"
 struct TransformData {
@@ -118,18 +119,42 @@ struct ViewData {
         return mat;
     }
 };
-Matrix& ClippingSpaceConversion(ViewData V, PerspectiveCameraData P,const Matrix& point_list) {
+inline void VertexClippingSpaceConversion(ViewData& V, PerspectiveCameraData& P,Matrix& point_list) {
     Matrix& MVP = P.GetMatrix() * V.GetMatrix() * point_list;
     //std::cout << MVP.Height << "x" << MVP.Width << std::endl;
     // std::cout << "MVP matrix: ";
     //  MVP.PrintOnGPU();
-    return MVP;
+
+    matrixMemMang.ShallowCopy(point_list,MVP);
 }
-Matrix& ClippingSpaceConversion(TransformData M, ViewData V, PerspectiveCameraData P,const Matrix& point_list) {
-    Matrix& MVP =  V.GetMatrix()  * P.GetMatrix() * M.GetMatrix() * point_list;
-    //std::cout << MVP.Height << "x" << MVP.Width << std::endl;
-   // std::cout << "MVP matrix: ";
-   //  MVP.PrintOnGPU();
-    return MVP;
+// Matrix& ClippingSpaceConversion(TransformData M, ViewData V, PerspectiveCameraData P,const Matrix& point_list) {
+//     Matrix& MVP =  V.GetMatrix()  * P.GetMatrix() * M.GetMatrix() * point_list;
+//     //std::cout << MVP.Height << "x" << MVP.Width << std::endl;
+//    // std::cout << "MVP matrix: ";
+//    //  MVP.PrintOnGPU();
+//     return MVP;
+// }
+// chưa test clipping space conversion
+inline void NormalClippingSpaceConversion(ViewData& V,PerspectiveCameraData& P, Matrix& vertexNormal,Matrix& faceNormal) {
+    Matrix& viewMatrix = V.GetMatrix();
+    Matrix& perspectiveMatrix = P.GetMatrix();
+    // 1. Khởi tạo Manager và tạo Deep Copy của ma trận View
+    // CÓ VẤN ĐỀ TRONG QUẢN LÝ BỘ NHỚ , XEM LẠI HÀM CREATE MATRIX POINTER
+    Matrix& normalMatrix =  viewMatrix;
+    normalMatrix.CopyToHost();
+    // 2. Tính Ma trận Pháp tuyến (Normal Matrix) = (View^-1)^T
+    // Các hàm này xử lý trên CPU bằng GLM và đã tự động CopyToDevice bên trong
+    normalMatrix.CPUInverse();
+    normalMatrix.CPUTranspose();
+    // 3. Chuyển đổi Normal sang View Space / Clipping Space
+    // Toán tử * của bạn sẽ gọi cuBLAS để nhân 2 ma trận trên GPU
+    // và trả về tham chiếu của Matrix kết quả (đã được tự động nạp vào matrixList)
+
+    Matrix& transformedVertNormals = (normalMatrix) * vertexNormal;
+    Matrix& transformedFaceNormals = (normalMatrix) * faceNormal;
+    matrixMemMang.ShallowCopy(vertexNormal,transformedVertNormals);
+    matrixMemMang.ShallowCopy(faceNormal,transformedFaceNormals);
+    // Matrix& transformedFaceNormals = (normalMatrix) * faceNormal;
+    // matrixMemMang.ShallowCopy(faceNormal,transformedFaceNormals);
 }
 #endif
