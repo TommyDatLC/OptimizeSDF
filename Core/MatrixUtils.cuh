@@ -8,6 +8,7 @@
 #include "MatrixMemoryManager.cuh"
 // ----------------------- UTILITIES FUNCTION------------------------
 __host__ __device__ void printMemory(float* mem_region,int height,int width) {
+   // printf("matrix w h: %dx%d\n",height,width);
     for (int h = 0; h < height; h++) {         // Lặp qua từng hàng
         for (int w = 0; w < width; w++) {     // Lặp qua từng cột trong hàng đó
             // Sử dụng hàm Get bạn đã viết hoặc truy cập trực tiếp

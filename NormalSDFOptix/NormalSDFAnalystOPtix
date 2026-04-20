@@ -1,0 +1,6 @@
+
+-- Input : Point list, triangle Index list
+-- for every point in the list do the ray cast using cone
+-- ray casting using Optix
+-- take average distance for every point
+-- take the avg distance and draw it 3D map using PolyScope engine

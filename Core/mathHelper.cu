@@ -28,7 +28,7 @@ inline float dot(const float3& a, const float3& b) {
 
 // 4. Hàm chuẩn hóa vector (Normalize)
 // Đưa độ dài vector về 1 đơn vị
-inline float3 normalize(float3 v) {
+inline __device__ __host__ float3 normalize(float3 v) {
     float len = std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
     if (len > 0.000001f) {
         v.x /= len;
@@ -39,6 +39,7 @@ inline float3 normalize(float3 v) {
 }
 
 inline __device__ float3 operator-(const float3& a, const float3& b) {
-    return float3(a.x - b.x, a.y - b.y, a.z - b.z);
+    return float3(a.x - b.x, a.y - b.y, a.z - b.z );
+
 }
 #endif
