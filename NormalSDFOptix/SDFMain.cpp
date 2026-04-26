@@ -12,6 +12,7 @@
 #include <optix.h>
 #include <optix_stubs.h>
 #include <cuda_runtime.h>
+#include <chrono>
 
 // -----------------------------------------------------------------------------
 // STRUCT ĐỒNG BỘ VỚI GPU (Phải giống hệt trong SDFOptix.cu)
@@ -285,11 +286,23 @@ inline void CaculatingSDFUsingOptix(Model& model) {
     // Matrix& normals = model.GetVertexNormalMatrix();
 
     int raysPerPoint = 128;
-    float coneAngle = 120.0f * (3.14159265f / 180.0f); // Đổi sang Radian
+    float coneAngle = 150.0f * (3.14159265f / 180.0f); // Đổi sang Radian
 
+    // Profilling script
+    auto start = std::chrono::high_resolution_clock::now();
     // THỰC THI (Ở đây tôi truyền vertices thay cho normals vì chưa rõ bạn đã có hàm GetVertexNormalMatrix chưa)
     std::vector<float> sdfResults = RunOptixConeRayCasting(vertices, indices, vertices, raysPerPoint, coneAngle);
 
+    // Tính toán độ trễ (có thể dùng microseconds, milliseconds hoặc nanoseconds)
+    // Ghi nhận thời gian kết thúc
+    auto stop = std::chrono::high_resolution_clock::now();
+
+    // Tính toán độ trễ và ép kiểu sang giây (dưới dạng số thực double)
+    std::chrono::duration<double> duration = stop - start;
+
+    std::cout << "Thời gian chạy: " << duration.count() << " giây\n";
+
+    // End profiliing
     double maxDist = 0.0;
     for (int i = 0; i < vertices.Width; ++i) {
         double avgDist = sdfResults[i];
