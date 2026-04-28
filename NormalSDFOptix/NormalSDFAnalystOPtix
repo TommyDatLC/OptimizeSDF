@@ -4,3 +4,317 @@
 -- ray casting using Optix
 -- take average distance for every point
 -- take the avg distance and draw it 3D map using PolyScope engine
+
+
+__________PYTHON RESULT___________
+==================================================
+Đang tính toán SDF cho 'Model/112.obj', vui lòng đợi...
+-> Thời gian chạy thuật toán: 0.1993 giây
+==================================================
+Đang tính toán SDF cho 'Model/118.obj', vui lòng đợi...
+-> Thời gian chạy thuật toán: 0.1343 giây
+==================================================
+Đang tính toán SDF cho 'Model/158.obj', vui lòng đợi...
+-> Thời gian chạy thuật toán: 0.1823 giây
+==================================================
+Đang tính toán SDF cho 'Model/181.obj', vui lòng đợi...
+-> Thời gian chạy thuật toán: 0.1469 giây
+==================================================
+Đang tính toán SDF cho 'Model/360.obj', vui lòng đợi...
+-> Thời gian chạy thuật toán: 0.0471 giây
+==================================================
+Đang tính toán SDF cho 'Model/368.obj', vui lòng đợi...
+-> Thời gian chạy thuật toán: 0.2679 giây
+==================================================
+Đang tính toán SDF cho 'Model/369.obj', vui lòng đợi...
+-> Thời gian chạy thuật toán: 0.3102 giây
+==================================================
+Đang tính toán SDF cho 'Model/371.obj', vui lòng đợi...
+-> Thời gian chạy thuật toán: 0.3521 giây
+==================================================
+Đang tính toán SDF cho 'Model/400.obj', vui lòng đợi...
+-> Thời gian chạy thuật toán: 0.0708 giây
+==================================================
+Đang tính toán SDF cho 'Model/76.obj', vui lòng đợi...
+-> Thời gian chạy thuật toán: 0.1000 giây
+==================================================
+Đang tính toán SDF cho 'Model/9.obj', vui lòng đợi...
+-> Thời gian chạy thuật toán: 0.0502 giây
+==================================================
+
+[polyscope] Backend: openGL3_glfw -- Loaded openGL version: 3.3.0 NVIDIA 570.195.03
+Bắt đầu quét thư mục: Model
+==================================================
+Đang xử lý: Model/400.obj
+Đọc thành công file: Model/400.obj (3703 đỉnh)
+Bắt đầu tính toán SDF bằng OptiX...
+[ 4][       KNOBS]: All knobs on default.
+
+[ 4][   DISKCACHE]: Opened database: "/var/tmp/OptixCache_datdau/optix7cache.db"
+[ 4][   DISKCACHE]:     Cache data size: "99.5 KiB"
+[ 4][   DISKCACHE]: Cache hit for key: ptx-15604-keyf15786f3ff2b0561917720d7b57d737e-sm_75-rtc1-drv570.195.03
+
+[ 4][    COMPILER]:
+[ 4][    COMPILER]: Info: Pipeline statistics
+	module(s)                            :     1
+	entry function(s)                    :     2
+	trace call(s)                        :     1
+	continuation callable call(s)        :     0
+	direct callable call(s)              :     0
+	basic block(s) in entry functions    :    42
+	instruction(s) in entry functions    :   507
+	non-entry function(s)                :     0
+	basic block(s) in non-entry functions:     0
+	instruction(s) in non-entry functions:     0
+	debug information                    :    no
+
+[ 4][   DISKCACHE]: Closed database: "/var/tmp/OptixCache_datdau/optix7cache.db"
+[ 4][   DISKCACHE]:     Cache data size: "99.5 KiB"
+OptiX: Đang bắn 128 tia/đỉnh cho 3703 đỉnh...
+Thời gian chạy: 0.0940863 giây
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 1.34339
+==================================================
+Đang xử lý: Model/76.obj
+Đọc thành công file: Model/76.obj (5923 đỉnh)
+Bắt đầu tính toán SDF bằng OptiX...
+[ 4][       KNOBS]: All knobs on default.
+
+[ 4][   DISKCACHE]: Opened database: "/var/tmp/OptixCache_datdau/optix7cache.db"
+[ 4][   DISKCACHE]:     Cache data size: "99.5 KiB"
+[ 4][   DISKCACHE]: Cache hit for key: ptx-15604-keyf15786f3ff2b0561917720d7b57d737e-sm_75-rtc1-drv570.195.03
+
+[ 4][    COMPILER]:
+[ 4][    COMPILER]: Info: Pipeline statistics
+	module(s)                            :     1
+	entry function(s)                    :     2
+	trace call(s)                        :     1
+	continuation callable call(s)        :     0
+	direct callable call(s)              :     0
+	basic block(s) in entry functions    :    42
+	instruction(s) in entry functions    :   507
+	non-entry function(s)                :     0
+	basic block(s) in non-entry functions:     0
+	instruction(s) in non-entry functions:     0
+	debug information                    :    no
+
+[ 4][   DISKCACHE]: Closed database: "/var/tmp/OptixCache_datdau/optix7cache.db"
+[ 4][   DISKCACHE]:     Cache data size: "99.5 KiB"
+OptiX: Đang bắn 128 tia/đỉnh cho 5923 đỉnh...
+Thời gian chạy: 0.0613881 giây
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 2.01327e+08
+==================================================
+Đang xử lý: Model/360.obj
+Đọc thành công file: Model/360.obj (2200 đỉnh)
+Bắt đầu tính toán SDF bằng OptiX...
+[ 4][       KNOBS]: All knobs on default.
+
+[ 4][   DISKCACHE]: Opened database: "/var/tmp/OptixCache_datdau/optix7cache.db"
+[ 4][   DISKCACHE]:     Cache data size: "99.5 KiB"
+[ 4][   DISKCACHE]: Cache hit for key: ptx-15604-keyf15786f3ff2b0561917720d7b57d737e-sm_75-rtc1-drv570.195.03
+
+[ 4][    COMPILER]:
+OptiX: Đang bắn 128 tia/đỉnh cho 2200 đỉnh...
+Thời gian chạy: 0.0607295 giây
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 0.0818979
+==================================================
+Đang xử lý: Model/9.obj
+[ 4][    COMPILER]: Info: Pipeline statistics
+	module(s)                            :     1
+	entry function(s)                    :     2
+	trace call(s)                        :     1
+	continuation callable call(s)        :     0
+	direct callable call(s)              :     0
+	basic block(s) in entry functions    :    42
+	instruction(s) in entry functions    :   507
+	non-entry function(s)                :     0
+	basic block(s) in non-entry functions:     0
+	instruction(s) in non-entry functions:     0
+	debug information                    :    no
+
+[ 4][   DISKCACHE]: Closed database: "/var/tmp/OptixCache_datdau/optix7cache.db"
+[ 4][   DISKCACHE]:     Cache data size: "99.5 KiB"
+Đọc thành công file: Model/9.obj (2639 đỉnh)
+Bắt đầu tính toán SDF bằng OptiX...
+[ 4][       KNOBS]: All knobs on default.
+
+[ 4][   DISKCACHE]: Opened database: "/var/tmp/OptixCache_datdau/optix7cache.db"
+[ 4][   DISKCACHE]:     Cache data size: "99.5 KiB"
+[ 4][   DISKCACHE]: Cache hit for key: ptx-15604-keyf15786f3ff2b0561917720d7b57d737e-sm_75-rtc1-drv570.195.03
+
+[ 4][    COMPILER]:
+[ 4][    COMPILER]: Info: Pipeline statistics
+	module(s)                            :     1
+	entry function(s)                    :     2
+	trace call(s)                        :     1
+	continuation callable call(s)        :     0
+	direct callable call(s)              :     0
+	basic block(s) in entry functions    :    42
+	instruction(s) in entry functions    :   507
+	non-entry function(s)                :     0
+	basic block(s) in non-entry functions:     0
+	instruction(s) in non-entry functions:     0
+	debug information                    :    no
+
+[ 4][   DISKCACHE]: Closed database: "/var/tmp/OptixCache_datdau/optix7cache.db"
+[ 4][   DISKCACHE]:     Cache data size: "99.5 KiB"
+OptiX: Đang bắn 128 tia/đỉnh cho 2639 đỉnh...
+Thời gian chạy: 0.0600779 giây
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 1.27951
+==================================================
+Đang xử lý: Model/371.obj
+Đọc thành công file: Model/371.obj (14599 đỉnh)
+Bắt đầu tính toán SDF bằng OptiX...
+[ 4][       KNOBS]: All knobs on default.
+
+[ 4][   DISKCACHE]: Opened database: "/var/tmp/OptixCache_datdau/optix7cache.db"
+[ 4][   DISKCACHE]:     Cache data size: "99.5 KiB"
+[ 4][   DISKCACHE]: Cache hit for key: ptx-15604-keyf15786f3ff2b0561917720d7b57d737e-sm_75-rtc1-drv570.195.03
+
+[ 4][    COMPILER]:
+[ 4][    COMPILER]: Info: Pipeline statistics
+	module(s)                            :     1
+	entry function(s)                    :     2
+	trace call(s)                        :     1
+	continuation callable call(s)        :     0
+	direct callable call(s)              :     0
+	basic block(s) in entry functions    :    42
+	instruction(s) in entry functions    :   507
+	non-entry function(s)                :     0
+	basic block(s) in non-entry functions:     0
+	instruction(s) in non-entry functions:     0
+	debug information                    :    no
+
+[ 4][   DISKCACHE]: Closed database: "/var/tmp/OptixCache_datdau/optix7cache.db"
+[ 4][   DISKCACHE]:     Cache data size: "99.5 KiB"
+OptiX: Đang bắn 128 tia/đỉnh cho 14599 đỉnh...
+Thời gian chạy: 0.0646716 giây
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 2.07782
+==================================================
+Đang xử lý: Model/158.obj
+Đọc thành công file: Model/158.obj (14587 đỉnh)
+Bắt đầu tính toán SDF bằng OptiX...
+[ 4][       KNOBS]: All knobs on default.
+
+[ 4][   DISKCACHE]: Opened database: "/var/tmp/OptixCache_datdau/optix7cache.db"
+[ 4][   DISKCACHE]:     Cache data size: "99.5 KiB"
+[ 4][   DISKCACHE]: Cache hit for key: ptx-15604-keyf15786f3ff2b0561917720d7b57d737e-sm_75-rtc1-drv570.195.03
+
+[ 4][    COMPILER]:
+[ 4][    COMPILER]: Info: Pipeline statistics
+	module(s)                            :     1
+	entry function(s)                    :     2
+	trace call(s)                        :     1
+	continuation callable call(s)        :     0
+	direct callable call(s)              :     0
+	basic block(s) in entry functions    :    42
+	instruction(s) in entry functions    :   507
+	non-entry function(s)                :     0
+	basic block(s) in non-entry functions:     0
+	instruction(s) in non-entry functions:     0
+	debug information                    :    no
+
+[ 4][   DISKCACHE]: Closed database: "/var/tmp/OptixCache_datdau/optix7cache.db"
+[ 4][   DISKCACHE]:     Cache data size: "99.5 KiB"
+OptiX: Đang bắn 128 tia/đỉnh cho 14587 đỉnh...
+Thời gian chạy: 0.0607071 giây
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 6.11906
+==================================================
+Đang xử lý: Model/369.obj
+Đọc thành công file: Model/369.obj (13606 đỉnh)
+Bắt đầu tính toán SDF bằng OptiX...
+[ 4][       KNOBS]: All knobs on default.
+
+[ 4][   DISKCACHE]: Opened database: "/var/tmp/OptixCache_datdau/optix7cache.db"
+[ 4][   DISKCACHE]:     Cache data size: "99.5 KiB"
+[ 4][   DISKCACHE]: Cache hit for key: ptx-15604-keyf15786f3ff2b0561917720d7b57d737e-sm_75-rtc1-drv570.195.03
+
+[ 4][    COMPILER]:
+[ 4][    COMPILER]: Info: Pipeline statistics
+	module(s)                            :     1
+	entry function(s)                    :     2
+	trace call(s)                        :     1
+	continuation callable call(s)        :     0
+	direct callable call(s)              :     0
+	basic block(s) in entry functions    :    42
+	instruction(s) in entry functions    :   507
+	non-entry function(s)                :     0
+	basic block(s) in non-entry functions:     0
+	instruction(s) in non-entry functions:     0
+	debug information                    :    no
+
+[ 4][   DISKCACHE]: Closed database: "/var/tmp/OptixCache_datdau/optix7cache.db"
+[ 4][   DISKCACHE]:     Cache data size: "99.5 KiB"
+OptiX: Đang bắn 128 tia/đỉnh cho 13606 đỉnh...
+Thời gian chạy: 0.0692761 giây
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 2.25333
+==================================================
+Đang xử lý: Model/118.obj
+Đọc thành công file: Model/118.obj (9153 đỉnh)
+Bắt đầu tính toán SDF bằng OptiX...
+[ 4][       KNOBS]: All knobs on default.
+
+[ 4][   DISKCACHE]: Opened database: "/var/tmp/OptixCache_datdau/optix7cache.db"
+[ 4][   DISKCACHE]:     Cache data size: "99.5 KiB"
+[ 4][   DISKCACHE]: Cache hit for key: ptx-15604-keyf15786f3ff2b0561917720d7b57d737e-sm_75-rtc1-drv570.195.03
+
+[ 4][    COMPILER]:
+[ 4][    COMPILER]: Info: Pipeline statistics
+	module(s)                            :     1
+	entry function(s)                    :     2
+	trace call(s)                        :     1
+	continuation callable call(s)        :     0
+	direct callable call(s)              :     0
+	basic block(s) in entry functions    :    42
+	instruction(s) in entry functions    :   507
+	non-entry function(s)                :     0
+	basic block(s) in non-entry functions:     0
+	instruction(s) in non-entry functions:     0
+	debug information                    :    no
+
+[ 4][   DISKCACHE]: Closed database: "/var/tmp/OptixCache_datdau/optix7cache.db"
+[ 4][   DISKCACHE]:     Cache data size: "99.5 KiB"
+OptiX: Đang bắn 128 tia/đỉnh cho 9153 đỉnh...
+Thời gian chạy: 0.060814 giây
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 1.28849e+10
+==================================================
+Đang xử lý: Model/181.obj
+Đọc thành công file: Model/181.obj (7242 đỉnh)
+Bắt đầu tính toán SDF bằng OptiX...
+[ 4][       KNOBS]: All knobs on default.
+
+[ 4][   DISKCACHE]: Opened database: "/var/tmp/OptixCache_datdau/optix7cache.db"
+[ 4][   DISKCACHE]:     Cache data size: "99.5 KiB"
+[ 4][   DISKCACHE]: Cache hit for key: ptx-15604-keyf15786f3ff2b0561917720d7b57d737e-sm_75-rtc1-drv570.195.03
+
+[ 4][    COMPILER]:
+[ 4][    COMPILER]: Info: Pipeline statistics
+	module(s)                            :     1
+	entry function(s)                    :     2
+	trace call(s)                        :     1
+	continuation callable call(s)        :     0
+	direct callable call(s)              :     0
+	basic block(s) in entry functions    :    42
+	instruction(s) in entry functions    :   507
+	non-entry function(s)                :     0
+	basic block(s) in non-entry functions:     0
+	instruction(s) in non-entry functions:     0
+	debug information                    :    no
+
+[ 4][   DISKCACHE]: Closed database: "/var/tmp/OptixCache_datdau/optix7cache.db"
+[ 4][   DISKCACHE]:     Cache data size: "99.5 KiB"
+OptiX: Đang bắn 128 tia/đỉnh cho 7242 đỉnh...
+Thời gian chạy: 0.064362 giây
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 4.40797
+==================================================
+Đang xử lý: Model/368.obj
+Đọc thành công file: Model/368.obj (11202 đỉnh)
+Thời gian chạy: 0.0600625 giây
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 1.85124
+==================================================
+Đang xử lý: Model/112.obj
+Đọc thành công file: Model/112.obj (13628 đỉnh)
+OptiX: Đang bắn 128 tia/đỉnh cho 13628 đỉnh...
+Thời gian chạy: 0.0627204 giây
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 2.36823
+==================================================
+Đã hoàn tất xử lý tất cả các file!

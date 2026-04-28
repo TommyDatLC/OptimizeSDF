@@ -18,8 +18,8 @@ private:
     std::vector<std::array<size_t, 3> > faces;
     Matrix *cacheVertexMatrix = nullptr;
     Matrix *cacheIndicesMatrix = nullptr;
-    Matrix *VertexNormalMatrix = nullptr;
-    Matrix *FaceNormalMatrix = nullptr;
+    Matrix *vertexNormalMatrix = nullptr;
+    Matrix *faceNormalMatrix = nullptr;
     std::vector<double> vertexAttributes;
 public:
     Model(std::string filename); //Read model using ReadFromObjFile
@@ -27,7 +27,7 @@ public:
     // Create an new matrix by using Matrix &MatrixMemoryManager::CreateMatrix(width,height)
     Matrix &GetVertexMatrix(); // loading the matrix vertex (one vertex per column)
     Matrix &GetVertexIndicesMatrix();
-
+    Matrix &GetVertexNormalMatrix();
     // loading the the index as adjection matrix, save into cache, if cache not null, return the cache instead
     void SetVertexMatrix(Matrix &newVertex);
 

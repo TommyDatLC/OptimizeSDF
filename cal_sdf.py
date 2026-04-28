@@ -21,6 +21,7 @@ def process_mesh(obj_file, hien_thi_3d=True):
     start_time = time.perf_counter()
     
     # Compute the Shape Diameter Function (SDF)
+    # ĐỒNG BỘ: Chỉnh cone_amplitude về 120 độ để khớp với C++ OptiX
     ms.apply_filter('compute_scalar_by_shape_diameter_function_per_vertex', 
                     cone_amplitude = 150)
                     
@@ -30,42 +31,39 @@ def process_mesh(obj_file, hien_thi_3d=True):
     execution_time = end_time - start_time
     print(f"-> Thời gian chạy thuật toán: {execution_time:.4f} giây")
     
-    # Lấy giá trị SDF
+    # Lấy giá trị SDF (Mảng này có độ dài bằng số lượng Đỉnh)
     sdf_values = ms.current_mesh().vertex_scalar_array()
 
     # Create a PyVista mesh từ file OBJ gốc
     mesh = pv.read(obj_file)
 
-    # Convert vertex-based SDF values to face-based values by averaging
-    # face_sdf = np.zeros(mesh.n_faces)
+    # ĐÃ SỬA: Gán giá trị SDF trực tiếp vào Đỉnh (Point Data) thay vì Mặt (Cell Data)
+    # Điều này giúp PyVista nội suy màu mượt mà y hệt như Polyscope bên C++
+    mesh.point_data['sdf'] = sdf_values
 
-    # for i, cell in enumerate(mesh.faces.reshape((-1, 4))):
-    #     vertex_ids = cell[1:]  # Bỏ qua con số đầu tiên (chỉ định số lượng đỉnh của mặt)
-    #     face_sdf[i] = np.mean(sdf_values[vertex_ids])
-
-    # # Gán giá trị SDF vào faces
-    # mesh.cell_data['sdf'] = face_sdf
-
-    # # Tạo tên file output và lưu file .sdf
-    # base_name = os.path.splitext(obj_file)[0]
-    # output_file = f"{base_name}.sdf"
+    # Tạo tên file output và lưu file .sdf theo dữ liệu Đỉnh
+    base_name = os.path.splitext(obj_file)[0]
+    output_file = f"{base_name}.sdf"
     
-    # with open(output_file, 'w') as f:
-    #     for face_id, sdf_value in enumerate(face_sdf):
-    #         f.write(f"{face_id},{sdf_value}\n")
-    # print(f"-> Đã lưu kết quả tại: {output_file}")
+    with open(output_file, 'w') as f:
+        # Ghi id của Đỉnh (Vertex) và giá trị SDF tương ứng
+        for vertex_id, sdf_value in enumerate(sdf_values):
+            f.write(f"{vertex_id},{sdf_value}\n")
+    print(f"-> Đã lưu kết quả tại: {output_file}")
 
-    # # Hiển thị 3D (Nếu được bật)
-    # if hien_thi_3d:
-    #     print("-> Đang mở cửa sổ 3D. Hãy đóng cửa sổ để chạy file tiếp theo...")
-    #     plotter = pv.Plotter()
-    #     plotter.add_mesh(mesh, scalars='sdf', cmap='jet', show_edges=True)
-    #     plotter.add_scalar_bar(title='SDF Values')
-    #     plotter.show()
+    # Hiển thị 3D (Nếu được bật)
+    if hien_thi_3d:
+        print("-> Đang mở cửa sổ 3D. Hãy đóng cửa sổ để chạy file tiếp theo...")
+        plotter = pv.Plotter()
+        
+        # ĐỒNG BỘ: Dùng cmap 'turbo' và bật smooth_shading để giống hệt Polyscope
+        plotter.add_mesh(mesh, scalars='sdf', cmap='turbo', show_edges=False, smooth_shading=True)
+        plotter.add_scalar_bar(title='SDF Values (Per Vertex)')
+        plotter.show()
 
 def main():
     # Tên thư mục chứa các file model
-    folder_path = "../../../../media/datdau/LuuTruHDD/testPythonSDF/Model"
+    folder_path = "./Model"
     
     # Kiểm tra xem thư mục có tồn tại không
     if not os.path.exists(folder_path):
@@ -73,7 +71,6 @@ def main():
         return
 
     # Lấy danh sách tất cả các file có đuôi .obj trong thư mục Model
-    # Dùng glob.glob kết hợp os.path.join sẽ tự động bắt định dạng chuẩn xác trên cả Windows/Mac/Linux
     search_pattern = os.path.join(folder_path, "*.obj")
     obj_files = glob.glob(search_pattern)
 
@@ -86,7 +83,6 @@ def main():
 
     # Chạy vòng lặp qua từng file
     for file_path in obj_files:
-        # Nếu muốn máy tự động chạy hết không cần xem hình 3D, hãy đổi thành hien_thi_3d=False
         process_mesh(file_path, hien_thi_3d=True)
         print("=" * 50)
         

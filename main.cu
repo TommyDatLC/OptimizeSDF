@@ -46,9 +46,9 @@ int main() {
 
             // 1. Tải Model
             Model model = Model(filePath);
-            // model.UpdateNormal();
+           // model.UpdateNormal();
             // model.ToClipSpace(v_data,p_data);
-            // model.AddToScene();
+            //model.AddToScene();
 
             // 3. Chạy thuật toán tính SDF
             CaculatingSDFUsingOptix(model);

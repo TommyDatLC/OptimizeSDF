@@ -93,7 +93,7 @@ extern "C" __global__ void __raygen__sdf_cone() {
             rayDirection,
             0.001f,
             1e16f,
-            0.0f,
+            0.0f,// cây bvh thời gian, mặc định để raytime = 0
             OptixVisibilityMask( 255 ),
             OPTIX_RAY_FLAG_DISABLE_ANYHIT,
             0, 1, 0,

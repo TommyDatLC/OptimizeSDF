@@ -36,23 +36,24 @@ __global__ inline void GPUNormalCaculation(
     // Normalize cho Face Normal
     float3 faceNorm = normalize(rawCross);
 
-    // 4. Lưu Face Normal (chiều cao ma trận normal luôn là 3: x,y,z)
-    facesNormal[faceIdx * 3 + 0] = faceNorm.x;
-    facesNormal[faceIdx * 3 + 1] = faceNorm.y;
-    facesNormal[faceIdx * 3 + 2] = faceNorm.z;
+    // 4. Lưu Face Normal (ĐÃ SỬA: Chiều cao ma trận là 4, nên dùng * 4)
+    facesNormal[faceIdx * 4 + 0] = faceNorm.x;
+    facesNormal[faceIdx * 4 + 1] = faceNorm.y;
+    facesNormal[faceIdx * 4 + 2] = faceNorm.z;
+    facesNormal[faceIdx * 4 + 3] = 0.0f; // ĐÃ SỬA: Vector chỉ hướng thì W = 0
 
-    // 5. Cộng dồn vào Vertex Normal (BẮT BUỘC DÙNG atomicAdd để chống ghi đè)
-    atomicAdd(&pointsNormal[i0 * 3 + 0], rawCross.x);
-    atomicAdd(&pointsNormal[i0 * 3 + 1], rawCross.y);
-    atomicAdd(&pointsNormal[i0 * 3 + 2], rawCross.z);
+    // 5. Cộng dồn vào Vertex Normal (ĐÃ SỬA: BẮT BUỘC DÙNG * 4)
+    atomicAdd(&pointsNormal[i0 * 4 + 0], rawCross.x);
+    atomicAdd(&pointsNormal[i0 * 4 + 1], rawCross.y);
+    atomicAdd(&pointsNormal[i0 * 4 + 2], rawCross.z);
 
-    atomicAdd(&pointsNormal[i1 * 3 + 0], rawCross.x);
-    atomicAdd(&pointsNormal[i1 * 3 + 1], rawCross.y);
-    atomicAdd(&pointsNormal[i1 * 3 + 2], rawCross.z);
+    atomicAdd(&pointsNormal[i1 * 4 + 0], rawCross.x);
+    atomicAdd(&pointsNormal[i1 * 4 + 1], rawCross.y);
+    atomicAdd(&pointsNormal[i1 * 4 + 2], rawCross.z);
 
-    atomicAdd(&pointsNormal[i2 * 3 + 0], rawCross.x);
-    atomicAdd(&pointsNormal[i2 * 3 + 1], rawCross.y);
-    atomicAdd(&pointsNormal[i2 * 3 + 2], rawCross.z);
+    atomicAdd(&pointsNormal[i2 * 4 + 0], rawCross.x);
+    atomicAdd(&pointsNormal[i2 * 4 + 1], rawCross.y);
+    atomicAdd(&pointsNormal[i2 * 4 + 2], rawCross.z);
 }
 
 // Kernel chuẩn hóa Normal của điểm
@@ -60,17 +61,19 @@ __global__ inline void GPUNormalizeVertexNormal(float* pointsNormal, int numVert
     int vertexIdx = blockIdx.x * blockDim.x + threadIdx.x;
     if (vertexIdx >= numVertices) return;
 
+    // ĐÃ SỬA: Dùng * 4 để lấy đúng bộ 3 giá trị x, y, z
     float3 rawNormal = {
-        pointsNormal[vertexIdx * 3 + 0],
-        pointsNormal[vertexIdx * 3 + 1],
-        pointsNormal[vertexIdx * 3 + 2]
+        pointsNormal[vertexIdx * 4 + 0],
+        pointsNormal[vertexIdx * 4 + 1],
+        pointsNormal[vertexIdx * 4 + 2]
     };
 
     float3 norm = normalize(rawNormal);
 
-    pointsNormal[vertexIdx * 3 + 0] = norm.x;
-    pointsNormal[vertexIdx * 3 + 1] = norm.y;
-    pointsNormal[vertexIdx * 3 + 2] = norm.z;
+    pointsNormal[vertexIdx * 4 + 0] = norm.x;
+    pointsNormal[vertexIdx * 4 + 1] = norm.y;
+    pointsNormal[vertexIdx * 4 + 2] = norm.z;
+    pointsNormal[vertexIdx * 4 + 3] = 0.0f; // ĐÃ SỬA: Vector chỉ hướng thì W = 0
 }
 
 #endif

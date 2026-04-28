@@ -85,7 +85,9 @@ inline std::vector<float> RunOptixConeRayCasting(Matrix& vMat, Matrix& iMat, Mat
     std::vector<uint3> optixIndices(numFaces);
 
     // Trích xuất dữ liệu từ class Matrix của bạn sang mảng chuẩn
-    vMat.CopyToHost(); nMat.CopyToHost(); iMat.CopyToHost();
+    vMat.CopyToHost();
+    nMat.CopyToHost();
+    iMat.CopyToHost();
     for(int i=0; i<numVertices; i++) {
         optixVertices[i] = make_float3(vMat.GetHost(0, i), vMat.GetHost(1, i), vMat.GetHost(2, i));
         optixNormals[i]  = make_float3(nMat.GetHost(0, i), nMat.GetHost(1, i), nMat.GetHost(2, i));
@@ -108,11 +110,9 @@ inline std::vector<float> RunOptixConeRayCasting(Matrix& vMat, Matrix& iMat, Mat
     // KHỞI TẠO OPTIX CONTEXT
     // =========================================================================
     CUDA_CHECK( cudaFree(0) ); // Khởi tạo CUDA runtime
-    OPTIX_CHECK( optixInit() );
-
     OptixDeviceContextOptions options = {};
     options.logCallbackFunction       = &context_log_cb;
-    options.logCallbackLevel          = 4; // Bật log để debug
+    options.logCallbackLevel          = 0; // Bật log để debug
 
     OptixDeviceContext context = nullptr;
     OPTIX_CHECK( optixDeviceContextCreate( 0, &options, &context ) );
@@ -121,10 +121,10 @@ inline std::vector<float> RunOptixConeRayCasting(Matrix& vMat, Matrix& iMat, Mat
     // 1. TẠO BVH (GEOMETRY ACCELERATION STRUCTURE - GAS)
     // =========================================================================
     OptixBuildInput triangleInput = {};
-    triangleInput.type                        = OPTIX_BUILD_INPUT_TYPE_TRIANGLES;
-    triangleInput.triangleArray.vertexFormat  = OPTIX_VERTEX_FORMAT_FLOAT3;
+    triangleInput.type                        = OPTIX_BUILD_INPUT_TYPE_TRIANGLES; // Có thể chuyển sang curve, shpere nếu muốn
+    triangleInput.triangleArray.vertexFormat  = OPTIX_VERTEX_FORMAT_FLOAT3; // Có thể sửa sang HALF3 Nếu muốn giảm precision
     triangleInput.triangleArray.numVertices   = numVertices;
-    triangleInput.triangleArray.vertexBuffers = (CUdeviceptr*)&d_vertices;
+    triangleInput.triangleArray.vertexBuffers = (CUdeviceptr*)&d_vertices; // ko chỉ nhận 1 mảng mà còn nhận nhiều mảng làm đỉnh
     triangleInput.triangleArray.indexFormat   = OPTIX_INDICES_FORMAT_UNSIGNED_INT3;
     triangleInput.triangleArray.numIndexTriplets = numFaces;
     triangleInput.triangleArray.indexBuffer   = (CUdeviceptr)d_indices;
@@ -135,16 +135,17 @@ inline std::vector<float> RunOptixConeRayCasting(Matrix& vMat, Matrix& iMat, Mat
 
     OptixAccelBuildOptions accelOptions = {};
     accelOptions.buildFlags             = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
-    accelOptions.operation              = OPTIX_BUILD_OPERATION_BUILD;
+    accelOptions.operation              = OPTIX_BUILD_OPERATION_BUILD;// Ngoài ra còn lệnh update để dùng trong chuyển động nhân
 
-    OptixAccelBufferSizes gasBufferSizes;
+    OptixAccelBufferSizes gasBufferSizes; // Hỏi OPtix xem cần cấp phát bao nhiêu bộ nhớ để xây cây BVH
     OPTIX_CHECK( optixAccelComputeMemoryUsage( context, &accelOptions, &triangleInput, 1, &gasBufferSizes ) );
 
-    CUdeviceptr d_tempBuffer, d_gasOutputBuffer;
+    CUdeviceptr d_tempBuffer, d_gasOutputBuffer;// Cấp phát từng đó bộ nhớ
     CUDA_CHECK( cudaMalloc((void**)&d_tempBuffer, gasBufferSizes.tempSizeInBytes) );
     CUDA_CHECK( cudaMalloc((void**)&d_gasOutputBuffer, gasBufferSizes.outputSizeInBytes) );
 
     OptixTraversableHandle bvhHandle = 0;
+    // Xây cây trên vùng nhớ đã được cấp phát
     OPTIX_CHECK( optixAccelBuild( context, 0, &accelOptions, &triangleInput, 1, d_tempBuffer, gasBufferSizes.tempSizeInBytes, d_gasOutputBuffer, gasBufferSizes.outputSizeInBytes, &bvhHandle, nullptr, 0 ) );
     CUDA_CHECK( cudaFree((void*)d_tempBuffer) );
 
@@ -276,22 +277,20 @@ inline std::vector<float> RunOptixConeRayCasting(Matrix& vMat, Matrix& iMat, Mat
 // -----------------------------------------------------------------------------
 inline void CaculatingSDFUsingOptix(Model& model) {
     std::cout << "Bắt đầu tính toán SDF bằng OptiX...\n";
-
+    int raysPerPoint = 64;
+    float coneAngle = 150.0f * (3.14159265f / 180.0f); // Đổi sang Radian
     Matrix& vertices = model.GetVertexMatrix();
     Matrix& indices = model.GetVertexIndicesMatrix();
-
+    auto start = std::chrono::high_resolution_clock::now();
     model.UpdateNormal();
+    Matrix& vNormal = model.GetVertexNormalMatrix();
     // Giả sử ma trận Normal của Vertex được tạo và quản lý trong Model (cần thêm hàm GetVertexNormalMatrix vào Model.cu)
-    // Nếu bạn không viết hàm GetVertexNormalMatrix, bạn có thể truyền tạm 'vertices' xuống dưới (mặc dù kết quả SDF sẽ sai hướng).
-    // Matrix& normals = model.GetVertexNormalMatrix();
 
-    int raysPerPoint = 128;
-    float coneAngle = 150.0f * (3.14159265f / 180.0f); // Đổi sang Radian
+
 
     // Profilling script
-    auto start = std::chrono::high_resolution_clock::now();
     // THỰC THI (Ở đây tôi truyền vertices thay cho normals vì chưa rõ bạn đã có hàm GetVertexNormalMatrix chưa)
-    std::vector<float> sdfResults = RunOptixConeRayCasting(vertices, indices, vertices, raysPerPoint, coneAngle);
+    std::vector<float> sdfResults = RunOptixConeRayCasting(vertices, indices, vNormal, raysPerPoint, coneAngle);
 
     // Tính toán độ trễ (có thể dùng microseconds, milliseconds hoặc nanoseconds)
     // Ghi nhận thời gian kết thúc

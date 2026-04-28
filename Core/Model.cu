@@ -23,8 +23,8 @@
 Model::Model(std::string filename) {
     cacheVertexMatrix = nullptr;
     cacheIndicesMatrix = nullptr;
-    VertexNormalMatrix = nullptr;
-    FaceNormalMatrix = nullptr;
+    vertexNormalMatrix = nullptr;
+    faceNormalMatrix = nullptr;
     ReadFromObjFile(filename);
 }
 
@@ -124,6 +124,11 @@ Matrix& Model::GetVertexIndicesMatrix() {
     return *cacheIndicesMatrix;
 }
 
+Matrix & Model::GetVertexNormalMatrix() {
+    return *vertexNormalMatrix;
+
+}
+
 void Model::SetVertexMatrix(Matrix& newVertex) {
     int numVertices = newVertex.Width;
     newVertex.CopyToHost();
@@ -151,18 +156,18 @@ void Model::UpdateNormal() {
 
     MatrixMemoryManager matrixMemMang;
 
-    if (VertexNormalMatrix == nullptr) {
-        VertexNormalMatrix = matrixMemMang.CreateMatrixPointer(4, numVertices);
+    if (vertexNormalMatrix == nullptr) {
+        vertexNormalMatrix = matrixMemMang.CreateMatrixPointer(4, numVertices);
     }
-    if (FaceNormalMatrix == nullptr) {
-        FaceNormalMatrix = matrixMemMang.CreateMatrixPointer(4, numFaces);
+    if (faceNormalMatrix == nullptr) {
+        faceNormalMatrix = matrixMemMang.CreateMatrixPointer(4, numFaces);
     }
 
     vertices.CopyToDevice();
     indices.CopyToDevice();
 
-    cudaMemset(VertexNormalMatrix->getDevicePtr(), 0, VertexNormalMatrix->GetSize());
-    cudaMemset(FaceNormalMatrix->getDevicePtr(), 0, FaceNormalMatrix->GetSize());
+    cudaMemset(vertexNormalMatrix->getDevicePtr(), 0, vertexNormalMatrix->GetSize());
+    cudaMemset(faceNormalMatrix->getDevicePtr(), 0, faceNormalMatrix->GetSize());
 
     int blockSize = 256;
     int gridSizeFaces = (numFaces + blockSize - 1) / blockSize;
@@ -171,15 +176,16 @@ void Model::UpdateNormal() {
     GPUNormalCaculation<<<gridSizeFaces, blockSize>>>(
         vertices.getDevicePtr(), vertices.Height,
         indices.getDevicePtr(), indices.Height, numFaces,
-        FaceNormalMatrix->getDevicePtr(),
-        VertexNormalMatrix->getDevicePtr()
+        faceNormalMatrix->getDevicePtr(),
+        vertexNormalMatrix->getDevicePtr()
     );
     cudaDeviceSynchronize();
 
     GPUNormalizeVertexNormal<<<gridSizeVertices, blockSize>>>(
-        VertexNormalMatrix->getDevicePtr(), numVertices
+        vertexNormalMatrix->getDevicePtr(), numVertices
     );
     cudaDeviceSynchronize();
+
 }
 
 // MỚI HOÀN THIỆN: Gán đại lượng vô hướng (Scalar Attribute) cho đỉnh
@@ -202,81 +208,75 @@ void Model::ToClipSpace(ViewData& V, PerspectiveCameraData& P) {
     VertexClippingSpaceConversion(V, P, vertices);
     SetVertexMatrix(vertices);
 
-    if (VertexNormalMatrix == nullptr || FaceNormalMatrix == nullptr) {
+    if (vertexNormalMatrix == nullptr || faceNormalMatrix == nullptr) {
         throw std::runtime_error("PointNormalMatrix is null. Call UpdateNormal() first.");
     }
 
-    NormalClippingSpaceConversion(V, P, *VertexNormalMatrix, *FaceNormalMatrix);
+    NormalClippingSpaceConversion(V, P, *vertexNormalMatrix, *faceNormalMatrix);
 
     vertices.CopyToHost();
-    if (VertexNormalMatrix) VertexNormalMatrix->CopyToHost();
-    if (FaceNormalMatrix) FaceNormalMatrix->CopyToHost();
+    if (vertexNormalMatrix) vertexNormalMatrix->CopyToHost();
+    if (faceNormalMatrix) faceNormalMatrix->CopyToHost();
 }
-
-// Display in the engine
-void Model::AddToScene(std::string name, bool displayNormal ) {
-    // 1. Đăng ký bề mặt mesh
+void Model::AddToScene(std::string name, bool displayNormal) {
+    // 1. Đăng ký bề mặt mesh vào Polyscope
     auto* psMesh = polyscope::registerSurfaceMesh(name, vertex, faces);
 
-    // 2. [TÍNH NĂNG MỚI]: Hiển thị Heat Map (Bản đồ nhiệt độ / Lỗi / SDF)
+    // 2. Hiển thị Heat Map (Bản đồ nhiệt độ / SDF)
     if (vertexAttributes.size() == vertex.size()) {
-        auto* heatMapQ = psMesh->addVertexScalarQuantity("Heat Map Attributes", vertexAttributes);
+        auto* heatMapQ = psMesh->addVertexScalarQuantity("SDF / Heat Map", vertexAttributes);
         heatMapQ->setEnabled(true);
-        // Có thể đổi dải màu thành "turbo", "jet", hoặc "viridis" tùy thẩm mỹ
+        // Đổi sang "turbo" để giống hệt bản màu mặc định của C++ SDF
         heatMapQ->setColorMap("turbo");
     }
 
-    // 3. Hiển thị Normal
+    // 3. Hiển thị Normal (World Space)
     if (displayNormal) {
-        if (VertexNormalMatrix == nullptr || FaceNormalMatrix == nullptr) {
+        if (vertexNormalMatrix == nullptr || faceNormalMatrix == nullptr) {
             throw std::runtime_error("Normals have not been calculated yet. Please call UpdateNormal() first.");
         }
 
-        VertexNormalMatrix->CopyToHost();
-        FaceNormalMatrix->CopyToHost();
+        // Kéo dữ liệu từ GPU về Host (RAM)
+        vertexNormalMatrix->CopyToHost();
+        faceNormalMatrix->CopyToHost();
         cudaDeviceSynchronize();
 
         // -----------------------------------------------------------------
-        // CÁCH CHUẨN XÁC ĐỂ XEM NORMAL TRONG CLIP SPACE: DÙNG MÀU SẮC (RGB)
+        // HIỂN THỊ NORMAL TRONG WORLD SPACE: DÙNG VECTOR (MŨI TÊN 3D)
         // -----------------------------------------------------------------
-        std::vector<std::array<double, 3>> vertexColors;
-        std::vector<std::array<double, 3>> vertexNormalsVector; // Giữ lại mũi tên nếu bạn vẫn muốn so sánh
-
-        vertexColors.reserve(vertex.size());
+        std::vector<std::array<double, 3>> vertexNormalsVector;
         vertexNormalsVector.reserve(vertex.size());
 
         for(size_t i = 0; i < vertex.size(); i++) {
-            double nx = (double)VertexNormalMatrix->GetHost(0, i);
-            double ny = (double)VertexNormalMatrix->GetHost(1, i);
-            double nz = (double)VertexNormalMatrix->GetHost(2, i);
+            // Giữ nguyên giá trị thô [-1, 1] của vector trong không gian
+            double nx = (double)vertexNormalMatrix->GetHost(0, i);
+            double ny = (double)vertexNormalMatrix->GetHost(1, i);
+            double nz = (double)vertexNormalMatrix->GetHost(2, i);
 
-            // Map giá trị từ [-1, 1] sang màu RGB [0, 1]
-            vertexColors.push_back({(nx + 1.0) / 2.0, (ny + 1.0) / 2.0, (nz + 1.0) / 2.0});
             vertexNormalsVector.push_back({nx, ny, nz});
         }
 
-        std::vector<std::array<double, 3>> faceColors;
         std::vector<std::array<double, 3>> faceNormalsVector;
-
-        faceColors.reserve(faces.size());
         faceNormalsVector.reserve(faces.size());
 
         for(size_t i = 0; i < faces.size(); i++) {
-            double nx = (double)FaceNormalMatrix->GetHost(0, i);
-            double ny = (double)FaceNormalMatrix->GetHost(1, i);
-            double nz = (double)FaceNormalMatrix->GetHost(2, i);
+            // Giữ nguyên giá trị thô
+            double nx = (double)faceNormalMatrix->GetHost(0, i);
+            double ny = (double)faceNormalMatrix->GetHost(1, i);
+            double nz = (double)faceNormalMatrix->GetHost(2, i);
 
-            faceColors.push_back({(nx + 1.0) / 2.0, (ny + 1.0) / 2.0, (nz + 1.0) / 2.0});
             faceNormalsVector.push_back({nx, ny, nz});
         }
 
-        // Đăng ký màu sắc Normal (Màu Đỏ = X, Màu Xanh lá = Y, Màu Xanh dương = Z)
-        auto* vColor = psMesh->addVertexColorQuantity("Clip Space Normal (Colors)", vertexColors);
-        auto* fColor = psMesh->addFaceColorQuantity("Clip Space Face Normal (Colors)", faceColors);
-        fColor->setEnabled(true); // Bật mặc định cái này để xem bề mặt!
+        // Đăng ký dưới dạng Mũi tên Vector (Vector Quantity)
+        auto* vNormal = psMesh->addVertexVectorQuantity("Vertex Normals (World Space)", vertexNormalsVector);
+        auto* fNormal = psMesh->addFaceVectorQuantity("Face Normals (World Space)", faceNormalsVector);
 
-        // Vẫn đăng ký mũi tên vector để bạn thấy rõ sự biến dạng của Clip Space
-        psMesh->addVertexVectorQuantity("Distorted Vectors (Mũi tên méo)", vertexNormalsVector);
-        psMesh->addFaceVectorQuantity("Distorted Face Vectors (Mũi tên méo)", faceNormalsVector);
+        // Bật hiển thị Vector của Mặt (Face) lên làm mặc định để dễ quan sát
+        fNormal->setEnabled(true);
+
+        // (Tùy chọn) Bạn có thể cấu hình thêm độ dài, màu sắc của mũi tên bằng code:
+        // fNormal->setVectorColor({0.8, 0.2, 0.2});
+        // fNormal->setVectorLengthScale(0.05);
     }
 }
