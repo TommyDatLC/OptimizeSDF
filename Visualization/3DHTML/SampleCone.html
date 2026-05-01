@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ray Generation & Orthogonal Matrix</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #080808;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        #controls-hint {
+            position: absolute;
+            bottom: 25px;
+            width: 100%;
+            text-align: center;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 15px;
+            pointer-events: none;
+            letter-spacing: 1px;
+            z-index: 10;
+        }
+        #controls-hint span {
+            margin: 0 15px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 8px 16px;
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        #math-formula {
+            position: absolute;
+            top: 30px;
+            left: 30px;
+            color: #FFFFFF;
+            font-size: 35px; 
+            text-shadow: 2px 2px 10px rgba(0,0,0,0.8);
+            pointer-events: none;
+            z-index: 20;
+            background: rgba(0, 0, 0, 0.4);
+            padding: 10px 25px;
+            border-radius: 15px;
+            border-left: 5px solid #2288FF;
+            display: none; 
+            transition: opacity 0.3s ease;
+        }
+        #h-label {
+            position: absolute;
+            color: #FFFF00;
+            font-size: 35px;
+            font-weight: bold;
+            pointer-events: none;
+            z-index: 15;
+            text-shadow: 2px 2px 4px #000;
+            display: none;
+            transform: translate(-50%, -50%);
+        }
+    </style>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+                "@tweenjs/tween.js": "https://unpkg.com/@tweenjs/tween.js@23.1.1/dist/tween.esm.js"
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="math-formula"></div>
+    <div id="h-label">1</div>
+    
+    <div id="controls-hint">
+        <span>🖱️ Trái: Bước tiếp theo</span>
+        <span>🖱️ Phải: Lùi lại</span>
+        <span>🖐️ Kéo: Xoay Camera</span>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import TWEEN from '@tweenjs/tween.js';
+
+        // ==========================================
+        // 1. SETUP SCENE, CAMERA, RENDERER
+        // ==========================================
+        const scene = new THREE.Scene();
+        const gridHelper = new THREE.GridHelper(20, 20, 0x444444, 0x222222);
+        scene.add(gridHelper);
+
+        const coneInitialPos = new THREE.Vector3(0, 0, 0);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+        const startCamPos = new THREE.Vector3(0, 4, 8);
+        camera.position.copy(startCamPos);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.target.set(0, 1.5, 0);
+        controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: null };
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        dirLight.position.set(5, 10, 7);
+        scene.add(dirLight);
+
+        // ==========================================
+        // 2. MÔ HÌNH HÌNH THOI (CÁCH XA TRUNG TÂM)
+        // ==========================================
+        const modelGroup = new THREE.Group();
+        scene.add(modelGroup);
+        
+        modelGroup.position.set(7, 2, -4); 
+        modelGroup.rotation.set(Math.PI / 6, Math.PI / 4, 0);
+
+        const pTop = new THREE.Vector3(0, 3, 0);
+        const pBot = new THREE.Vector3(0, -3, 0);
+        const pFront = new THREE.Vector3(0, 0, 3);
+        const pRight = new THREE.Vector3(3, 0, 0);
+        const pBack = new THREE.Vector3(0, 0, -3);
+        const pLeft = new THREE.Vector3(-3, 0, 0);
+
+        const faces = [];
+        function createTri(p1, p2, p3) {
+            const geo = new THREE.BufferGeometry().setFromPoints([p1, p2, p3]);
+            geo.computeVertexNormals();
+            const mat = new THREE.MeshPhongMaterial({ color: 0x1155AA, side: THREE.DoubleSide, transparent: true, opacity: 0.8 });
+            const mesh = new THREE.Mesh(geo, mat);
+            const edgeMat = new THREE.LineBasicMaterial({ color: 0x88CCFF, transparent: true, opacity: 0.5 });
+            mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgeMat));
+            modelGroup.add(mesh);
+            faces.push(mesh);
+        }
+
+        createTri(pTop, pFront, pRight); createTri(pTop, pRight, pBack);
+        createTri(pTop, pBack, pLeft);   createTri(pTop, pLeft, pFront);
+        createTri(pBot, pRight, pFront); createTri(pBot, pBack, pRight);
+        createTri(pBot, pLeft, pBack);   createTri(pBot, pFront, pLeft);
+
+        const targetVertexLocal = pRight.clone();
+        const targetNormalLocal = new THREE.Vector3(1, 0, 0);
+
+        modelGroup.updateMatrixWorld(true);
+        const targetVertex = targetVertexLocal.applyMatrix4(modelGroup.matrixWorld);
+        const targetNormal = targetNormalLocal.transformDirection(modelGroup.matrixWorld).normalize();
+        const invNormal = targetNormal.clone().multiplyScalar(-1);
+
+        const vertexDot = new THREE.Mesh(new THREE.SphereGeometry(0.12, 16, 16), new THREE.MeshBasicMaterial({color: 0xFFFFFF}));
+        vertexDot.position.copy(targetVertex);
+        vertexDot.visible = false;
+        scene.add(vertexDot);
+
+        // ==========================================
+        // 3. TẠO HÌNH NÓN Ở TRUNG TÂM & RANDOM POINTS
+        // ==========================================
+        const coneHeight = 3.0; 
+        const coneAngle = 35 * (Math.PI / 180);
+        const coneRadius = coneHeight * Math.tan(coneAngle);
+
+        const coneGroup = new THREE.Group();
+        coneGroup.position.copy(coneInitialPos);
+        scene.add(coneGroup);
+
+        const coneGeo = new THREE.CylinderGeometry(coneRadius, 0.01, coneHeight, 32);
+        coneGeo.translate(0, coneHeight / 2, 0);
+        
+        const coneMat = new THREE.MeshPhongMaterial({ color: 0x2288FF, transparent: true, opacity: 0.0, side: THREE.DoubleSide, depthWrite: false });
+        const coneMesh = new THREE.Mesh(coneGeo, coneMat);
+        const coneEdges = new THREE.LineSegments(new THREE.EdgesGeometry(coneGeo), new THREE.LineBasicMaterial({ color: 0x88CCFF, transparent: true, opacity: 0.0 }));
+        coneGroup.add(coneMesh);
+        coneGroup.add(coneEdges);
+
+        const mathGroup = new THREE.Group();
+        const lineMatYellow = new THREE.LineBasicMaterial({ color: 0xFFFF00, linewidth: 3, transparent: true, opacity: 0 });
+        const lineMatRed = new THREE.LineBasicMaterial({ color: 0xFF0000, linewidth: 3, transparent: true, opacity: 0 }); 
+        
+        const hLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0, coneHeight, 0)]), lineMatYellow);
+        const rLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, coneHeight, 0), new THREE.Vector3(coneRadius, coneHeight, 0)]), lineMatRed);
+        const hypLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(coneRadius, coneHeight, 0)]), lineMatYellow);
+        mathGroup.add(hLine, rLine, hypLine);
+        coneGroup.add(mathGroup);
+        
+        // Ẩn sẵn các đường này để tránh bị mảng màu lạ
+        hLine.visible = false; rLine.visible = false; hypLine.visible = false;
+
+        const hMidPos = new THREE.Vector3(0, coneHeight / 2, 0);
+
+        const pointsGroup = new THREE.Group();
+        coneGroup.add(pointsGroup);
+        const numPoints = 12;
+        const targetPointsLocal = [];
+        const ptMeshes = [];
+        
+        for(let i=0; i<numPoints; i++){
+            const theta = Math.random() * Math.PI * 2;
+            const r_rand = coneRadius * Math.sqrt(Math.random());
+            const px = r_rand * Math.cos(theta);
+            const pz = r_rand * Math.sin(theta);
+            const py = coneHeight; 
+            
+            const pt = new THREE.Vector3(px, py, pz);
+            targetPointsLocal.push(pt);
+
+            // Xóa opacity=0, sử dụng visible=false để triệt tiêu lỗi Z-buffer đốm đen
+            const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8), new THREE.MeshBasicMaterial({ color: 0xFFFFFF }));
+            mesh.position.copy(pt);
+            mesh.visible = false;
+            pointsGroup.add(mesh);
+            ptMeshes.push(mesh);
+        }
+
+        // ==========================================
+        // 4. CROSS PRODUCT VÀ MA TRẬN TRỰC GIAO
+        // ==========================================
+        const worldUp = new THREE.Vector3(0, 1, 0);
+        if (Math.abs(invNormal.dot(worldUp)) > 0.999) worldUp.set(1, 0, 0);
+        
+        const localY = invNormal.clone(); 
+        const localX = new THREE.Vector3().crossVectors(worldUp, localY).normalize();
+        const localZ = new THREE.Vector3().crossVectors(localX, localY).normalize();
+
+        const rotMatrix = new THREE.Matrix4().makeBasis(localX, localY, localZ);
+        const finalQuat = new THREE.Quaternion().setFromRotationMatrix(rotMatrix);
+
+        function createArrow(origin, dir, length, colorHex) {
+            const arrow = new THREE.ArrowHelper(dir.clone().normalize(), origin, length, colorHex, length*0.2, length*0.15);
+            arrow.visible = false;
+            scene.add(arrow);
+            return arrow;
+        }
+
+        const lenVec = 2.0;
+        const arrNorm = createArrow(targetVertex, targetNormal, lenVec, 0x888888); 
+        const arrInvNorm = createArrow(targetVertex, localY, lenVec, 0x00FFFF); 
+        const arrUp = createArrow(targetVertex, worldUp, lenVec, 0xFFFFFF); 
+        const arrRight = createArrow(targetVertex, localX, lenVec, 0xFF0000); 
+        const arrTrueUp = createArrow(targetVertex, localZ, lenVec, 0x00FF00); 
+
+        // ==========================================
+        // 5. TIA RAY VÀ TÍNH TOÁN RAYCAST
+        // ==========================================
+        const rays = [];
+        const rayMatObj = new THREE.LineBasicMaterial({ color: 0xFFFF00, transparent: true, opacity: 0, linewidth: 2 });
+        for(let i=0; i<numPoints; i++) {
+            const geo = new THREE.BufferGeometry().setFromPoints([targetVertex, targetVertex]); 
+            const line = new THREE.Line(geo, rayMatObj);
+            line.visible = false;
+            scene.add(line);
+            rays.push(line);
+        }
+
+        const raycaster = new THREE.Raycaster();
+        const intersectPts = [];
+        const hitDistances = [];
+        const intersectDots = [];
+
+        for(let i=0; i<numPoints; i++){
+            const localDir = targetPointsLocal[i].clone().normalize();
+            const worldDir = localDir.clone().applyQuaternion(finalQuat).normalize();
+            
+            raycaster.set(targetVertex.clone().add(worldDir.clone().multiplyScalar(0.01)), worldDir);
+            const intersects = raycaster.intersectObjects(faces, false);
+            
+            if(intersects.length > 0) {
+                intersectPts.push(intersects[0].point);
+                hitDistances.push(intersects[0].distance + 0.01);
+            } else {
+                intersectPts.push(targetVertex.clone().add(worldDir.clone().multiplyScalar(15))); 
+                hitDistances.push(15); 
+            }
+
+            const dot = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), new THREE.MeshBasicMaterial({ color: 0xFF0000 }));
+            dot.visible = false;
+            scene.add(dot);
+            intersectDots.push(dot);
+        }
+
+        const validHits = hitDistances.filter(d => d < 15);
+        const avgDist = validHits.length > 0 ? (validHits.reduce((a,b)=>a+b, 0) / validHits.length) : 0;
+
+        // ==========================================
+        // 6. CÔNG THỨC & STATE MACHINE (9 BƯỚC)
+        // ==========================================
+        const mathFormulas = [
+            "", // Step 0
+            "r = 1 \\cdot \\tan(\\theta)", // Step 1 - Chữ trắng, đường đỏ 3D
+            "\\begin{cases} x = r \\sqrt{u_1} \\cos(2\\pi u_2) \\\\ z = r \\sqrt{u_1} \\sin(2\\pi u_2) \\end{cases}", // Step 2 - Chữ trắng
+            "\\vec{Y} = \\vec{N}_{inv} = -\\vec{N}_{vertex}", // Step 3
+            "\\vec{X} = \\vec{Up} \\times \\vec{Y}", // Step 4 
+            "\\vec{Z} = \\vec{X} \\times \\vec{Y}", // Step 5
+            "M_{rot} = [\\vec{X}, \\vec{Y}, \\vec{Z}]", // Step 6
+            "M_{rot} \\times \\text{Random Vertex}", // Step 7 - Đã thay đổi
+            "Ray_i \\to \\infty", // Step 8
+            `d_{avg} = \\frac{1}{${validHits.length}} \\sum d_i \\approx ${avgDist.toFixed(2)}` // Step 9
+        ];
+
+        const mathOverlay = document.getElementById('math-formula');
+        const hLabel = document.getElementById('h-label');
+
+        function updateMathFormula(step) {
+            if (step === 0) {
+                mathOverlay.style.display = 'none';
+            } else {
+                mathOverlay.style.display = 'block';
+                katex.render(mathFormulas[step], mathOverlay, { throwOnError: false });
+            }
+        }
+
+        function updateLabels() {
+            if (window.currentStep === 1) {
+                hLabel.style.display = 'block';
+                const vector = hMidPos.clone();
+                vector.applyMatrix4(coneGroup.matrixWorld);
+                vector.project(camera);
+                const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+                const y = (vector.y * -0.5 + 0.5) * window.innerHeight;
+                hLabel.style.left = `${x + 15}px`;
+                hLabel.style.top = `${y}px`;
+            } else {
+                hLabel.style.display = 'none';
+            }
+        }
+
+        const MAX_STEPS = 9;
+        window.currentStep = 0;
+        let isAnimating = false;
+
+        function tweenObj(obj, props, duration, easing = TWEEN.Easing.Quadratic.Out, onUpdate = null) {
+            return new Promise(resolve => {
+                const tween = new TWEEN.Tween(obj).to(props, duration).easing(easing).onComplete(resolve);
+                if (onUpdate) tween.onUpdate(onUpdate);
+                tween.start();
+            });
+        }
+
+        function snapToStep(step) {
+            updateMathFormula(step);
+            
+            if (step >= 7) {
+                coneGroup.position.copy(targetVertex);
+                coneGroup.quaternion.copy(finalQuat);
+            } else {
+                coneGroup.position.copy(coneInitialPos);
+                coneGroup.quaternion.identity();
+            }
+
+            coneMesh.material.opacity = (step >= 1 && step < 8) ? 0.3 : 0;
+            coneEdges.material.opacity = (step >= 1 && step < 8) ? 0.7 : 0;
+            
+            [hLine, rLine, hypLine].forEach(l => {
+                l.visible = (step === 1);
+                l.material.opacity = (step === 1) ? 1 : 0;
+            });
+            
+            ptMeshes.forEach(pt => {
+                pt.visible = (step >= 2 && step < 8);
+                pt.scale.set(1, 1, 1);
+            });
+
+            vertexDot.visible = (step >= 3);
+            vertexDot.scale.set(1, 1, 1);
+            
+            arrNorm.visible = (step >= 3);
+            arrInvNorm.visible = (step >= 3);   
+            arrUp.visible = (step === 4);       
+            if (step === 4) arrUp.setLength(lenVec, lenVec*0.2, lenVec*0.15);
+
+            arrRight.visible = (step >= 4);      
+            arrTrueUp.visible = (step >= 5);     
+
+            rays.forEach((r, i) => {
+                r.visible = (step >= 8);
+                if (step >= 8) {
+                    r.material.opacity = 0.8;
+                    const startPt = targetVertex;
+                    let endPt;
+                    if (step === 8) {
+                        const dir = targetPointsLocal[i].clone().normalize().applyQuaternion(finalQuat);
+                        endPt = startPt.clone().add(dir.multiplyScalar(50)); 
+                    } else {
+                        endPt = intersectPts[i]; 
+                    }
+                    r.geometry.setFromPoints([startPt, endPt]);
+                }
+            });
+
+            intersectDots.forEach((dot, i) => {
+                if(step >= 9 && hitDistances[i] < 15) {
+                    dot.visible = true;
+                    dot.position.copy(intersectPts[i]);
+                    dot.scale.set(1,1,1);
+                } else {
+                    dot.visible = false;
+                }
+            });
+
+            if (step >= 3) {
+                controls.target.copy(targetVertex);
+                camera.position.set(targetVertex.x + 3, targetVertex.y + 3, targetVertex.z + 8);
+            } else {
+                controls.target.copy(coneInitialPos);
+                camera.position.set(coneInitialPos.x, 4, 8);
+            }
+        }
+
+        async function animateTransition(step) {
+            updateMathFormula(step);
+
+            if (step === 1) { 
+                [hLine, rLine, hypLine].forEach(l => l.visible = true);
+                await Promise.all([
+                    tweenObj(coneMesh.material, { opacity: 0.3 }, 800),
+                    tweenObj(coneEdges.material, { opacity: 0.7 }, 800),
+                    tweenObj(hLine.material, { opacity: 1 }, 800)
+                ]);
+                await tweenObj(rLine.material, { opacity: 1 }, 600);
+                await tweenObj(hypLine.material, { opacity: 1 }, 600);
+            }
+            else if (step === 2) { 
+                [hLine, rLine, hypLine].forEach(l => tweenObj(l.material, { opacity: 0 }, 500).then(()=> l.visible = false));
+                const promises = ptMeshes.map((pt, i) => {
+                    pt.visible = true;
+                    pt.scale.set(0.01, 0.01, 0.01);
+                    return tweenObj(pt.scale, {x:1, y:1, z:1}, 600, TWEEN.Easing.Back.Out);
+                });
+                await Promise.all(promises);
+            }
+            else if (step === 3) { 
+                const panTarget = tweenObj(controls.target, {x: targetVertex.x, y: targetVertex.y, z: targetVertex.z}, 1500, TWEEN.Easing.Cubic.InOut);
+                const panCam = tweenObj(camera.position, {x: targetVertex.x + 3, y: targetVertex.y + 3, z: targetVertex.z + 8}, 1500, TWEEN.Easing.Cubic.InOut);
+                
+                vertexDot.visible = true;
+                vertexDot.scale.set(0.01, 0.01, 0.01);
+                tweenObj(vertexDot.scale, {x:1, y:1, z:1}, 1000, TWEEN.Easing.Back.Out);
+                
+                await Promise.all([panTarget, panCam]);
+
+                arrNorm.visible = true; arrInvNorm.visible = true;
+                arrNorm.setLength(0.01, 0, 0); arrInvNorm.setLength(0.01, 0, 0);
+                
+                await Promise.all([
+                    tweenObj({l:0}, {l:lenVec}, 600, TWEEN.Easing.Quadratic.Out, obj => arrNorm.setLength(obj.l, obj.l*0.2, obj.l*0.15)),
+                    tweenObj({l:0}, {l:lenVec}, 600, TWEEN.Easing.Quadratic.Out, obj => arrInvNorm.setLength(obj.l, obj.l*0.2, obj.l*0.15))
+                ]);
+            }
+            else if (step === 4) { 
+                arrUp.visible = true; arrUp.setLength(0.01, 0, 0);
+                arrRight.visible = true; arrRight.setLength(0.01, 0, 0);
+                
+                await Promise.all([
+                    tweenObj({l:0}, {l:lenVec}, 600, TWEEN.Easing.Quadratic.Out, obj => arrUp.setLength(obj.l, obj.l*0.2, obj.l*0.15)),
+                    tweenObj({l:0}, {l:lenVec}, 600, TWEEN.Easing.Quadratic.Out, obj => arrRight.setLength(obj.l, obj.l*0.2, obj.l*0.15))
+                ]);
+            }
+            else if (step === 5) { 
+                tweenObj({l:lenVec}, {l:0.01}, 400, TWEEN.Easing.Quadratic.In, obj => arrUp.setLength(obj.l, obj.l*0.2, obj.l*0.15))
+                    .then(() => arrUp.visible = false);
+
+                arrTrueUp.visible = true; arrTrueUp.setLength(0.01, 0, 0);
+                await tweenObj({l:0}, {l:lenVec}, 600, TWEEN.Easing.Quadratic.Out, obj => arrTrueUp.setLength(obj.l, obj.l*0.2, obj.l*0.15));
+            }
+            else if (step === 6) {
+                await new Promise(r => setTimeout(r, 600));
+            }
+            else if (step === 7) { 
+                const qStart = coneGroup.quaternion.clone();
+                const qTween = tweenObj({ t: 0 }, { t: 1 }, 1200, TWEEN.Easing.Cubic.InOut, obj => coneGroup.quaternion.slerpQuaternions(qStart, finalQuat, obj.t));
+                const pTween = tweenObj(coneGroup.position, {x: targetVertex.x, y: targetVertex.y, z: targetVertex.z}, 1200, TWEEN.Easing.Cubic.InOut);
+                
+                await Promise.all([pTween, qTween]);
+            }
+            else if (step === 8) { 
+                tweenObj(coneMesh.material, { opacity: 0 }, 800);
+                tweenObj(coneEdges.material, { opacity: 0 }, 800);
+                ptMeshes.forEach(pt => tweenObj(pt.scale, { x: 0.01, y: 0.01, z: 0.01 }, 800).then(() => pt.visible = false));
+
+                const promises = rays.map((r, i) => {
+                    r.visible = true;
+                    r.material.opacity = 0.8;
+                    const dir = targetPointsLocal[i].clone().normalize().applyQuaternion(finalQuat);
+                    const startPt = targetVertex;
+                    const endPt = startPt.clone().add(dir.multiplyScalar(50)); 
+                    return tweenObj({ t: 0 }, { t: 1 }, 800, TWEEN.Easing.Cubic.Out, obj => {
+                        const currentEnd = startPt.clone().lerp(endPt, obj.t);
+                        r.geometry.setFromPoints([startPt, currentEnd]);
+                    });
+                });
+                await Promise.all(promises);
+            }
+            else if (step === 9) {
+                const promises = rays.map((r, i) => {
+                    const startPt = targetVertex;
+                    const dir = targetPointsLocal[i].clone().normalize().applyQuaternion(finalQuat);
+                    const infPt = startPt.clone().add(dir.multiplyScalar(50));
+                    const hitPt = intersectPts[i];
+                    
+                    if (hitDistances[i] < 15) {
+                        intersectDots[i].position.copy(hitPt);
+                        intersectDots[i].scale.set(0.01, 0.01, 0.01);
+                        intersectDots[i].visible = true;
+                        tweenObj(intersectDots[i].scale, {x:1, y:1, z:1}, 500, TWEEN.Easing.Back.Out);
+                    }
+
+                    return tweenObj({ t: 0 }, { t: 1 }, 800, TWEEN.Easing.Cubic.Out, obj => {
+                        const currentEnd = infPt.clone().lerp(hitPt, obj.t);
+                        r.geometry.setFromPoints([startPt, currentEnd]);
+                    });
+                });
+                await Promise.all(promises);
+            }
+        }
+
+        async function goToStep(step) {
+            step = Math.max(0, Math.min(step, MAX_STEPS));
+            if (step === window.currentStep && !isAnimating) return;
+            TWEEN.removeAll();
+            if (step < window.currentStep) { 
+                window.currentStep = step; snapToStep(window.currentStep); isAnimating = false; 
+            } else {
+                if (isAnimating) { snapToStep(window.currentStep); isAnimating = false; return; }
+                isAnimating = true; snapToStep(window.currentStep); window.currentStep = step;
+                await animateTransition(window.currentStep); isAnimating = false;
+            }
+        }
+
+        let startX, startY;
+        document.addEventListener('contextmenu', e => e.preventDefault());
+        document.addEventListener('pointerdown', e => { startX = e.clientX; startY = e.clientY; });
+        document.addEventListener('pointerup', e => {
+            const dx = e.clientX - startX, dy = e.clientY - startY;
+            if (Math.sqrt(dx*dx + dy*dy) < 5) {
+                if (e.button === 0) goToStep(window.currentStep + 1);
+                else if (e.button === 2) goToStep(window.currentStep - 1);
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        snapToStep(0);
+        
+        function animate(time) {
+            requestAnimationFrame(animate);
+            TWEEN.update(time);
+            controls.update();
+            updateLabels();
+            renderer.render(scene, camera);
+        }
+        animate();
+    </script>
+</body>
+</html>

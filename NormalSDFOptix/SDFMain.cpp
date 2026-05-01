@@ -129,7 +129,7 @@ inline std::vector<float> RunOptixConeRayCasting(Matrix& vMat, Matrix& iMat, Mat
     triangleInput.triangleArray.numIndexTriplets = numFaces;
     triangleInput.triangleArray.indexBuffer   = (CUdeviceptr)d_indices;
 
-    uint32_t triangleInputFlags[1] = { OPTIX_GEOMETRY_FLAG_NONE };
+    uint32_t triangleInputFlags[1] = { OPTIX_GEOMETRY_FLAG_DISABLE_TRIANGLE_FACE_CULLING  };
     triangleInput.triangleArray.flags         = triangleInputFlags;
     triangleInput.triangleArray.numSbtRecords = 1;
 
@@ -155,11 +155,11 @@ inline std::vector<float> RunOptixConeRayCasting(Matrix& vMat, Matrix& iMat, Mat
     OptixModuleCompileOptions moduleCompileOptions = {};
     OptixPipelineCompileOptions pipelineCompileOptions = {};
     pipelineCompileOptions.usesMotionBlur        = false;
-    pipelineCompileOptions.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
-    pipelineCompileOptions.numPayloadValues      = 1;
-    pipelineCompileOptions.numAttributeValues    = 2;
+    pipelineCompileOptions.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS; // Chỉ có 1 cây BVH
+    pipelineCompileOptions.numPayloadValues      = 1;// chỉ được phép mang 1 payload vào
+    pipelineCompileOptions.numAttributeValues    = 2;// output
     pipelineCompileOptions.exceptionFlags        = OPTIX_EXCEPTION_FLAG_NONE;
-    pipelineCompileOptions.pipelineLaunchParamsVariableName = "params";
+    pipelineCompileOptions.pipelineLaunchParamsVariableName = "params"; // Tự động bind biến params sang GPU
 
     // CHÚ Ý: Đảm bảo đường dẫn này trỏ đúng tới file .ptx được CMake sinh ra
     std::string ptxCode = readPTX("CMakeFiles/OptixShaders.dir/NormalSDFOptix/SDFOptix.ptx");

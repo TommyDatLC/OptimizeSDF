@@ -7,7 +7,7 @@
 #include "Core/Matrix.cuh"
 #include "Core/Model.cuh"
 #include "Core/ModelHelper.cu"
-#include "cmake-build-debug/_deps/polyscope-src/include/polyscope/polyscope.h"
+#include "polyscope/polyscope.h"
 #include "OptiX/optix.h"
 #include "OptiX/optix_stubs.h"
 #include <optix_function_table_definition.h>
@@ -30,7 +30,7 @@ int main() {
     std::cout << "Bắt đầu quét thư mục: " << folderPath << "\n";
 
     // Cờ điều khiển việc có mở UI 3D hay không
-    bool hien_thi_3d = false;
+    bool hien_thi_3d = true;
 
     // Lặp qua tất cả các file trong thư mục
     for (const auto& entry : fs::directory_iterator(folderPath)) {

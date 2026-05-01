@@ -24,9 +24,7 @@ private:
     Matrix(float* deviceMemory);
 public:
     // Move constructor
-        Matrix() {};
-
-
+        Matrix() {}
         ~Matrix();
 
         int Height = 0,Width = 0;

@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BVH Tree Raycasting</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #0a0a0a;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        #controls-hint {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+            pointer-events: none;
+            letter-spacing: 1px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px 15px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        #controls-hint span {
+            margin: 0 10px;
+        }
+    </style>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+                "@tweenjs/tween.js": "https://unpkg.com/@tweenjs/tween.js@23.1.1/dist/tween.esm.js"
+            }
+        }
+    </script>
+</head>
+<body>
+<div id="controls-hint">
+    <span>🖱️ Trái: Bước tiếp</span> |
+    <span>🖱️ Phải: Lùi lại</span> |
+    <span>🖐️ Kéo: Xoay</span>
+</div>
+
+<script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import TWEEN from '@tweenjs/tween.js';
+
+    // ==========================================
+    // 1. SETUP SCENE & CAMERA
+    // ==========================================
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(8, 4, 12);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    document.body.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: null };
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    dirLight.position.set(5, 10, 7);
+    scene.add(dirLight);
+
+    // ==========================================
+    // 2. COLORS & GEOMETRY SETUP
+    // ==========================================
+    const COLOR_TRI = 0x2288FF;
+    const COLOR_HIT = 0x00FF00;
+    const COLOR_MISS = 0xFF0000;
+    const COLOR_L2 = 0xFFFF00;
+    const COLOR_ROOT = 0xFF8800;
+
+    const triangles = [];
+    const boxes = {};
+
+    function createTri(p1, p2, p3) {
+        const geo = new THREE.BufferGeometry().setFromPoints([p1, p2, p3]);
+        geo.computeVertexNormals();
+        const mat = new THREE.MeshPhongMaterial({
+            color: COLOR_TRI,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.85,
+            shininess: 60
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+
+        const edgeGeo = new THREE.EdgesGeometry(geo);
+        const edgeMat = new THREE.LineBasicMaterial({ color: 0xFFFFFF, transparent: true, opacity: 0.7 });
+        mesh.add(new THREE.LineSegments(edgeGeo, edgeMat));
+
+        scene.add(mesh);
+        return mesh;
+    }
+
+    function createBVHBox(objects, color, padding = 0.2) {
+        const box3 = new THREE.Box3();
+        objects.forEach(obj => {
+            obj.geometry.computeBoundingBox();
+            const tempBox = obj.geometry.boundingBox.clone();
+            tempBox.applyMatrix4(obj.matrixWorld);
+            box3.union(tempBox);
+        });
+        box3.expandByScalar(padding);
+
+        const size = box3.getSize(new THREE.Vector3());
+        const center = box3.getCenter(new THREE.Vector3());
+
+        const geo = new THREE.BoxGeometry(size.x, size.y, size.z);
+        const edges = new THREE.EdgesGeometry(geo);
+        const mat = new THREE.LineBasicMaterial({ color: color, transparent: true, opacity: 0.0, linewidth: 2 });
+        const line = new THREE.LineSegments(edges, mat);
+        line.position.copy(center);
+
+        scene.add(line);
+
+        line.userData.center = center;
+        line.userData.originalColor = color;
+        line.userData.childrenObjects = objects;
+        return line;
+    }
+
+    // Tọa độ khối Bát diện (Octahedron)
+    const topP = new THREE.Vector3(0, 3, 0);
+    const botP = new THREE.Vector3(0, -3, 0);
+    const frontP = new THREE.Vector3(0, 0, 3);
+    const rightP = new THREE.Vector3(3, 0, 0);
+    const backP = new THREE.Vector3(0, 0, -3);
+    const leftP = new THREE.Vector3(-3, 0, 0);
+
+    // Nửa trên (Group A)
+    const tA1_1 = createTri(topP, frontP, rightP);
+    const tA1_2 = createTri(topP, rightP, backP);
+    const tA2_1 = createTri(topP, backP, leftP);
+    const tA2_2 = createTri(topP, leftP, frontP);
+
+    // Nửa dưới (Group B)
+    const tB1_1 = createTri(botP, rightP, frontP); // ĐÂY LÀ TAM GIÁC MỤC TIÊU BỊ BẮN TRÚNG
+    const tB1_2 = createTri(botP, backP, rightP);
+    const tB2_1 = createTri(botP, leftP, backP);
+    const tB2_2 = createTri(botP, frontP, leftP);
+
+    const groupA = [tA1_1, tA1_2, tA2_1, tA2_2];
+    const groupB = [tB1_1, tB1_2, tB2_1, tB2_2];
+    triangles.push(...groupA, ...groupB);
+
+    // BVH Tree Hierarchy: Rút gọn xuống 3 Layer
+    scene.updateMatrixWorld(true);
+
+    boxes.A = createBVHBox(groupA, COLOR_L2, 0.2);
+    boxes.B = createBVHBox(groupB, COLOR_L2, 0.2);
+    boxes.Root = createBVHBox([...groupA, ...groupB], COLOR_ROOT, 0.6);
+
+    const allBoxes = [boxes.A, boxes.B, boxes.Root];
+
+    // Hàm tiện ích lấy tâm tam giác
+    function getTriangleCenter(mesh) {
+        const positions = mesh.geometry.attributes.position.array;
+        return new THREE.Vector3(
+            (positions[0] + positions[3] + positions[6]) / 3,
+            (positions[1] + positions[4] + positions[7]) / 3,
+            (positions[2] + positions[5] + positions[8]) / 3
+        );
+    }
+
+    // ==========================================
+    // 3. RAY SETUP (FIXED TRAJECTORY)
+    // ==========================================
+    // Cố định điểm xuất phát và đích đến của tia ray
+    const rayOrigin = new THREE.Vector3(7, -5, 7);
+    const targetPos = getTriangleCenter(tB1_1);
+    const rayTargetDist = rayOrigin.distanceTo(targetPos);
+
+    const rayGeo = new THREE.CylinderGeometry(0.06, 0.06, 1, 8);
+    rayGeo.translate(0, 0.5, 0);
+    rayGeo.rotateX(Math.PI / 2);
+    const rayMat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF, transparent: true, opacity: 0 });
+    const rayBeam = new THREE.Mesh(rayGeo, rayMat);
+
+    // Đặt tia nằm yên vĩnh viễn ở vị trí này
+    rayBeam.position.copy(rayOrigin);
+    rayBeam.lookAt(targetPos);
+    rayBeam.scale.set(1, 1, rayTargetDist);
+    scene.add(rayBeam);
+
+    const hitDot = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 16), new THREE.MeshBasicMaterial({ color: COLOR_HIT }));
+    hitDot.position.copy(targetPos);
+    hitDot.visible = false;
+    scene.add(hitDot);
+
+    // ==========================================
+    // 4. ANIMATION STATE MACHINE
+    // ==========================================
+    const MAX_STEPS = 7;
+    let currentStep = 0;
+    let isAnimating = false;
+
+    function tweenPromise(tween) {
+        return new Promise(resolve => tween.onComplete(resolve).onStop(resolve).start());
+    }
+
+    function snapToStep(step) {
+        triangles.forEach(t => { t.material.color.setHex(COLOR_TRI); t.material.opacity = 0.85; });
+        allBoxes.forEach(b => { b.material.color.setHex(b.userData.originalColor); b.material.opacity = 0.0; });
+        rayBeam.material.opacity = 0;
+        rayBeam.scale.set(1, 1, rayTargetDist); // Luôn giữ độ dài cố định
+        hitDot.visible = false;
+
+        if (step >= 1) [boxes.A, boxes.B].forEach(b => b.material.opacity = 0.8);
+        if (step >= 2) boxes.Root.material.opacity = 0.8;
+
+        if (step >= 3) {
+            rayBeam.material.opacity = 0.8;
+            boxes.Root.material.color.setHex(COLOR_HIT);
+        }
+        if (step >= 4) {
+            boxes.A.material.color.setHex(COLOR_MISS);
+            boxes.A.material.opacity = 0.1;
+            [tA1_1, tA1_2, tA2_1, tA2_2].forEach(t => t.material.opacity = 0.1);
+        }
+        if (step >= 5) {
+            boxes.B.material.color.setHex(COLOR_HIT);
+        }
+        if (step >= 6) {
+            tB1_2.material.color.setHex(COLOR_MISS);
+            tB1_2.material.opacity = 0.1;
+        }
+        if (step >= 7) {
+            tB1_1.material.color.setHex(COLOR_HIT);
+            hitDot.visible = true;
+            hitDot.scale.set(1, 1, 1);
+        }
+    }
+
+    async function animateTransition(step) {
+        if (step === 1) await Promise.all([boxes.A, boxes.B].map(b => tweenPromise(new TWEEN.Tween(b.material).to({ opacity: 0.8 }, 800))));
+        else if (step === 2) await tweenPromise(new TWEEN.Tween(boxes.Root.material).to({ opacity: 0.8 }, 800));
+        else if (step === 3) {
+            // Bắn tia ray (Chỉ thay đổi độ dài từ 0 tới đích trên quỹ đạo tĩnh)
+            rayBeam.material.opacity = 0.8;
+            rayBeam.scale.set(1, 1, 0.01);
+            await tweenPromise(new TWEEN.Tween(rayBeam.scale).to({ z: rayTargetDist }, 600).easing(TWEEN.Easing.Cubic.Out));
+            boxes.Root.material.color.setHex(COLOR_HIT);
+        }
+        // Các hàm check không còn dịch chuyển tia ray nữa, chỉ đổi màu Box/Triangle
+        else if (step === 4) await animateCheck(boxes.A, false, [boxes.A, tA1_1, tA1_2, tA2_1, tA2_2]);
+        else if (step === 5) await animateCheck(boxes.B, true);
+        else if (step === 6) await animateCheck(tB1_2, false, [tB1_2]);
+        else if (step === 7) {
+            await animateCheck(tB1_1, true);
+            hitDot.scale.set(0.01, 0.01, 0.01);
+            hitDot.visible = true;
+            await tweenPromise(new TWEEN.Tween(hitDot.scale).to({ x:1, y:1, z:1 }, 500).easing(TWEEN.Easing.Elastic.Out));
+        }
+    }
+
+    // Logic check mới: Chỉ thay đổi màu sắc để biểu diễn toán học, tia ray đứng yên!
+    async function animateCheck(targetMesh, isHit, childrenToFade = []) {
+        targetMesh.material.color.setHex(isHit ? COLOR_HIT : COLOR_MISS);
+
+        if (!isHit) {
+            // Đợi 1 chút để người xem thấy Box chuyển màu Đỏ (Tức là thuật toán test và trượt)
+            await tweenPromise(new TWEEN.Tween({ t: 0 }).to({ t: 1 }, 400));
+            // Sau đó mờ dần các thành phần bên trong hộp đó (Loại bỏ nhánh)
+            await Promise.all(childrenToFade.map(child => tweenPromise(new TWEEN.Tween(child.material).to({ opacity: 0.1 }, 400))));
+        } else {
+            // Nếu trúng, chờ 1 khoảnh khắc nhỏ trước khi cho qua bước tiếp theo
+            await tweenPromise(new TWEEN.Tween({ t: 0 }).to({ t: 1 }, 400));
+        }
+    }
+
+    async function goToStep(step) {
+        step = Math.max(0, Math.min(step, MAX_STEPS));
+        if (step === currentStep && !isAnimating) return;
+        TWEEN.removeAll();
+        if (step < currentStep) { currentStep = step; snapToStep(currentStep); isAnimating = false; }
+        else {
+            if (isAnimating) { snapToStep(currentStep); isAnimating = false; return; }
+            isAnimating = true; snapToStep(currentStep); currentStep = step;
+            await animateTransition(currentStep); isAnimating = false;
+        }
+    }
+
+    // ==========================================
+    // 5. EVENT LISTENERS
+    // ==========================================
+    let startX, startY;
+    document.addEventListener('contextmenu', e => e.preventDefault());
+
+    document.addEventListener('pointerdown', e => {
+        startX = e.clientX; startY = e.clientY;
+    });
+
+    document.addEventListener('pointerup', e => {
+        const dx = e.clientX - startX, dy = e.clientY - startY;
+        if (Math.sqrt(dx * dx + dy * dy) < 5) {
+            if (e.button === 0) goToStep(currentStep + 1);
+            else if (e.button === 2) goToStep(currentStep - 1);
+        }
+    });
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    snapToStep(0);
+
+    const rotationGroup = new THREE.Group();
+    scene.add(rotationGroup);
+    triangles.forEach(t => rotationGroup.add(t));
+    allBoxes.forEach(b => rotationGroup.add(b));
+    // Xoay tia ray và điểm va chạm cùng với Group luôn để giữ đúng vị trí tương đối
+    rotationGroup.add(rayBeam);
+    rotationGroup.add(hitDot);
+
+    function animate(time) {
+        requestAnimationFrame(animate);
+        TWEEN.update(time);
+        controls.update();
+        rotationGroup.rotation.y += 0.001;
+        renderer.render(scene, camera);
+    }
+    animate();
+</script>
+</body>
+</html>
