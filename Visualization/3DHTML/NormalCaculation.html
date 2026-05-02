@@ -247,7 +247,7 @@
     // ==========================================
     const mathFormulas = [
         "", // Step 0
-        "\\text{CUDA Threads: Process each faces}", // Step 1
+        "\\text{CUDA Threads: Process 8 Faces}", // Step 1
         "\\textcolor{#FFFF00}{\\vec{v}_1} = P_1 - P_0, \\quad \\textcolor{#00FF00}{\\vec{v}_2} = P_2 - P_0", // Step 2
         "\\textcolor{#FF0000}{\\vec{N}_{face}} = \\textcolor{#FFFF00}{\\vec{v}_1} \\times \\textcolor{#00FF00}{\\vec{v}_2}", // Step 3
         "\\textcolor{#FF0000}{\\vec{N}_{face\\_i}} = \\vec{v}_{1\\_i} \\times \\vec{v}_{2\\_i}", // Step 4
@@ -390,6 +390,18 @@
             sumArrow.setLength(1.8, 1.8 * 0.2, 1.8 * 0.15);
             sumArrow.setColor(COLOR_VERTEX_NORMAL);
             centerDot.material.color.setHex(COLOR_VERTEX_NORMAL);
+            sumArrow.visible = true;
+        }
+
+        // Xử lý góc nhìn Camera tại các bước
+        if (step >= 5) {
+            // Zoom vào nhìn rõ các Vector Gathered tại đỉnh chóp từ bước 5
+            controls.target.set(0, 3.5, 0);
+            camera.position.set(3, 4.5, 4);
+        } else {
+            // Góc nhìn toàn cảnh ban đầu
+            controls.target.set(0, 0, 0);
+            camera.position.set(0, 4, 11);
         }
     }
 
@@ -435,6 +447,14 @@
             const promises = faces.map(f => tweenColor(f.material, COLOR_DEFAULT, 400));
             for(let i=0; i<4; i++) promises.push(moveArrowOrigin(normalArrows[i], centerPt, 800));
             for(let i=4; i<8; i++) promises.push(shrinkArrow(normalArrows[i], 500));
+
+            // Lia và phóng to camera về phía đỉnh chóp
+            const targetTween = new TWEEN.Tween(controls.target)
+                .to({x: 0, y: 3.5, z: 0}, 1200).easing(TWEEN.Easing.Cubic.InOut);
+            const posTween = new TWEEN.Tween(camera.position)
+                .to({x: 3, y: 4.5, z: 4}, 1200).easing(TWEEN.Easing.Cubic.InOut);
+            promises.push(createTweenPromise(targetTween), createTweenPromise(posTween));
+
             await Promise.all(promises);
         }
         else if (toStep === 6) {
@@ -446,17 +466,22 @@
         }
         else if (toStep === 7) {
             const promises = [];
+
+            // Hiệu ứng thay đổi độ dài và màu sắc của vector
             const lenTween = new TWEEN.Tween({ l: sum_len })
-                .to({ l: 1.8 }, 800).easing(TWEEN.Easing.Quadratic.InOut)
+                .to({ l: 1.8 }, 1000).easing(TWEEN.Easing.Quadratic.InOut)
                 .onUpdate(obj => sumArrow.setLength(obj.l, obj.l * 0.2, obj.l * 0.15));
             promises.push(createTweenPromise(lenTween));
 
             const initialCol = new THREE.Color(COLOR_SUM);
             const targetCol = new THREE.Color(COLOR_VERTEX_NORMAL);
-            const colTween = new TWEEN.Tween(initialCol).to(targetCol, 800).onUpdate(() => sumArrow.setColor(initialCol));
+            const colTween = new TWEEN.Tween(initialCol).to(targetCol, 1000).onUpdate(() => sumArrow.setColor(initialCol));
             promises.push(createTweenPromise(colTween));
 
-            promises.push(tweenColor(centerDot.material, COLOR_VERTEX_NORMAL, 800));
+            promises.push(tweenColor(centerDot.material, COLOR_VERTEX_NORMAL, 1000));
+
+            // Camera đã zoom từ bước 5, không cần thiết lập lại ở đây nữa
+
             await Promise.all(promises);
         }
     }
@@ -500,7 +525,7 @@
         requestAnimationFrame(animate);
         TWEEN.update(time);
         controls.update();
-        scene.rotation.y += 0.001;
+        scene.rotation.y += 0.001; // Tự động xoay quanh tâm nhẹ nhàng
         renderer.render(scene, camera);
     }
 
@@ -513,4 +538,4 @@
     animate();
 </script>
 </body>
-</html> 
+</html>
