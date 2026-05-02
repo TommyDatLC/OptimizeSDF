@@ -167,7 +167,7 @@
         scene.add(vertexDot);
 
         // ==========================================
-        // 3. TẠO HÌNH NÓN Ở TRUNG TÂM & RANDOM POINTS
+        // 3. TẠO HÌNH NÓN Ở TRUNG TÂM & ĐƯỜNG TOÁN HỌC
         // ==========================================
         const coneHeight = 3.0; 
         const coneAngle = 35 * (Math.PI / 180);
@@ -196,37 +196,51 @@
         mathGroup.add(hLine, rLine, hypLine);
         coneGroup.add(mathGroup);
         
-        // Ẩn sẵn các đường này để tránh bị mảng màu lạ
         hLine.visible = false; rLine.visible = false; hypLine.visible = false;
 
         const hMidPos = new THREE.Vector3(0, coneHeight / 2, 0);
 
+        // ==========================================
+        // 4. RANDOM POINTS (SIN/COS EDGE -> SQRT(U) INNER)
+        // ==========================================
         const pointsGroup = new THREE.Group();
         coneGroup.add(pointsGroup);
         const numPoints = 12;
-        const targetPointsLocal = [];
-        const ptMeshes = [];
         
+        const ptData = []; 
+        const ptMeshes = [];
+        const radialLines = []; 
+        
+        const centerBase = new THREE.Vector3(0, coneHeight, 0);
+
         for(let i=0; i<numPoints; i++){
             const theta = Math.random() * Math.PI * 2;
-            const r_rand = coneRadius * Math.sqrt(Math.random());
-            const px = r_rand * Math.cos(theta);
-            const pz = r_rand * Math.sin(theta);
-            const py = coneHeight; 
+            const u1 = Math.random();
             
-            const pt = new THREE.Vector3(px, py, pz);
-            targetPointsLocal.push(pt);
+            const r_edge = coneRadius;
+            const pEdge = new THREE.Vector3(r_edge * Math.cos(theta), coneHeight, r_edge * Math.sin(theta));
+            
+            const r_inner = coneRadius * Math.sqrt(u1);
+            const pInner = new THREE.Vector3(r_inner * Math.cos(theta), coneHeight, r_inner * Math.sin(theta));
+            
+            ptData.push({ pEdge, pInner });
 
-            // Xóa opacity=0, sử dụng visible=false để triệt tiêu lỗi Z-buffer đốm đen
             const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8), new THREE.MeshBasicMaterial({ color: 0xFFFFFF }));
-            mesh.position.copy(pt);
-            mesh.visible = false;
+            mesh.position.copy(pEdge);
+            mesh.visible = false; 
             pointsGroup.add(mesh);
             ptMeshes.push(mesh);
+
+            const rGeo = new THREE.BufferGeometry().setFromPoints([centerBase, pEdge]);
+            const rMat = new THREE.LineBasicMaterial({ color: 0xFF0000, transparent: true, opacity: 0 }); 
+            const rLineObj = new THREE.Line(rGeo, rMat);
+            rLineObj.visible = false;
+            coneGroup.add(rLineObj);
+            radialLines.push(rLineObj);
         }
 
         // ==========================================
-        // 4. CROSS PRODUCT VÀ MA TRẬN TRỰC GIAO
+        // 5. CROSS PRODUCT VÀ MA TRẬN TRỰC GIAO
         // ==========================================
         const worldUp = new THREE.Vector3(0, 1, 0);
         if (Math.abs(invNormal.dot(worldUp)) > 0.999) worldUp.set(1, 0, 0);
@@ -253,7 +267,7 @@
         const arrTrueUp = createArrow(targetVertex, localZ, lenVec, 0x00FF00); 
 
         // ==========================================
-        // 5. TIA RAY VÀ TÍNH TOÁN RAYCAST
+        // 6. TIA RAY VÀ TÍNH TOÁN RAYCAST
         // ==========================================
         const rays = [];
         const rayMatObj = new THREE.LineBasicMaterial({ color: 0xFFFF00, transparent: true, opacity: 0, linewidth: 2 });
@@ -271,7 +285,7 @@
         const intersectDots = [];
 
         for(let i=0; i<numPoints; i++){
-            const localDir = targetPointsLocal[i].clone().normalize();
+            const localDir = ptData[i].pInner.clone().normalize();
             const worldDir = localDir.clone().applyQuaternion(finalQuat).normalize();
             
             raycaster.set(targetVertex.clone().add(worldDir.clone().multiplyScalar(0.01)), worldDir);
@@ -295,19 +309,21 @@
         const avgDist = validHits.length > 0 ? (validHits.reduce((a,b)=>a+b, 0) / validHits.length) : 0;
 
         // ==========================================
-        // 6. CÔNG THỨC & STATE MACHINE (9 BƯỚC)
+        // 7. CÔNG THỨC & STATE MACHINE (10 BƯỚC)
         // ==========================================
+        // Cập nhật lỗi KaTeX: Thay thế toàn bộ \rand thành rand để hiển thị ổn định
         const mathFormulas = [
             "", // Step 0
-            "r = 1 \\cdot \\tan(\\theta)", // Step 1 - Chữ trắng, đường đỏ 3D
-            "\\begin{cases} x = r \\sqrt{u_1} \\cos(2\\pi u_2) \\\\ z = r \\sqrt{u_1} \\sin(2\\pi u_2) \\end{cases}", // Step 2 - Chữ trắng
-            "\\vec{Y} = \\vec{N}_{inv} = -\\vec{N}_{vertex}", // Step 3
-            "\\vec{X} = \\vec{Up} \\times \\vec{Y}", // Step 4 
-            "\\vec{Z} = \\vec{X} \\times \\vec{Y}", // Step 5
-            "M_{rot} = [\\vec{X}, \\vec{Y}, \\vec{Z}]", // Step 6
-            "M_{rot} \\times \\text{Random Vertex}", // Step 7 - Đã thay đổi
-            "Ray_i \\to \\infty", // Step 8
-            `d_{avg} = \\frac{1}{${validHits.length}} \\sum d_i \\approx ${avgDist.toFixed(2)}` // Step 9
+            "\\textcolor{#FF0000}{r} = 1 \\cdot \\tan(\\theta_{rand})", // Step 1
+            "\\begin{cases} x = \\textcolor{#FF0000}{r} \\cos(2\\pi u_{2rand}) \\\\ z = \\textcolor{#FF0000}{r} \\sin(2\\pi u_{2rand}) \\end{cases}", // Step 2
+            "\\begin{cases} x = \\textcolor{#FF0000}{r} \\sqrt{u_{1rand}} \\cos(2\\pi u_{2rand}) \\\\ z = \\textcolor{#FF0000}{r} \\sqrt{u_{1rand}} \\sin(2\\pi u_{2rand}) \\end{cases}", // Step 3
+            "\\vec{Y} = \\textcolor{#00FFFF}{\\vec{N}_{inv}} = -\\vec{N}_{vertex}", // Step 4 
+            "\\textcolor{#FF0000}{\\vec{X}} = \\vec{Up} \\times \\vec{Y}", // Step 5
+            "\\textcolor{#00FF00}{\\vec{Z}} = \\textcolor{#FF0000}{\\vec{X}} \\times \\vec{Y}", // Step 6
+            "M_{rot} = [\\textcolor{#FF0000}{\\vec{X}}, \\vec{Y}, \\textcolor{#00FF00}{\\vec{Z}}]", // Step 7
+            "M_{rot} \\times \\text{Random Vertex}_{rand}", // Step 8
+            "Ray_{irand} \\to \\infty", // Step 9
+            `d_{avg} = \\frac{1}{${validHits.length}} \\sum d_{irand} \\approx ${avgDist.toFixed(2)}` // Step 10
         ];
 
         const mathOverlay = document.getElementById('math-formula');
@@ -337,7 +353,7 @@
             }
         }
 
-        const MAX_STEPS = 9;
+        const MAX_STEPS = 10;
         window.currentStep = 0;
         let isAnimating = false;
 
@@ -352,7 +368,7 @@
         function snapToStep(step) {
             updateMathFormula(step);
             
-            if (step >= 7) {
+            if (step >= 8) {
                 coneGroup.position.copy(targetVertex);
                 coneGroup.quaternion.copy(finalQuat);
             } else {
@@ -360,38 +376,48 @@
                 coneGroup.quaternion.identity();
             }
 
-            coneMesh.material.opacity = (step >= 1 && step < 8) ? 0.3 : 0;
-            coneEdges.material.opacity = (step >= 1 && step < 8) ? 0.7 : 0;
+            coneMesh.material.opacity = (step >= 1 && step < 9) ? 0.3 : 0;
+            coneEdges.material.opacity = (step >= 1 && step < 9) ? 0.7 : 0;
             
             [hLine, rLine, hypLine].forEach(l => {
                 l.visible = (step === 1);
                 l.material.opacity = (step === 1) ? 1 : 0;
             });
             
-            ptMeshes.forEach(pt => {
-                pt.visible = (step >= 2 && step < 8);
+            ptMeshes.forEach((pt, i) => {
+                pt.visible = (step >= 2 && step < 9);
                 pt.scale.set(1, 1, 1);
+                if (step === 2) {
+                    pt.position.copy(ptData[i].pEdge);
+                } else if (step >= 3) {
+                    pt.position.copy(ptData[i].pInner);
+                }
+            });
+            
+            radialLines.forEach((rl) => {
+                rl.visible = (step === 2);
+                rl.material.opacity = (step === 2) ? 0.8 : 0;
             });
 
-            vertexDot.visible = (step >= 3);
+            vertexDot.visible = (step >= 4);
             vertexDot.scale.set(1, 1, 1);
             
-            arrNorm.visible = (step >= 3);
-            arrInvNorm.visible = (step >= 3);   
-            arrUp.visible = (step === 4);       
-            if (step === 4) arrUp.setLength(lenVec, lenVec*0.2, lenVec*0.15);
+            arrNorm.visible = (step === 4);
+            arrInvNorm.visible = (step >= 4);   
+            arrUp.visible = (step === 5);       
+            if (step === 5) arrUp.setLength(lenVec, lenVec*0.2, lenVec*0.15);
 
-            arrRight.visible = (step >= 4);      
-            arrTrueUp.visible = (step >= 5);     
+            arrRight.visible = (step >= 5);      
+            arrTrueUp.visible = (step >= 6);     
 
             rays.forEach((r, i) => {
-                r.visible = (step >= 8);
-                if (step >= 8) {
+                r.visible = (step >= 9);
+                if (step >= 9) {
                     r.material.opacity = 0.8;
                     const startPt = targetVertex;
                     let endPt;
-                    if (step === 8) {
-                        const dir = targetPointsLocal[i].clone().normalize().applyQuaternion(finalQuat);
+                    if (step === 9) {
+                        const dir = ptData[i].pInner.clone().normalize().applyQuaternion(finalQuat);
                         endPt = startPt.clone().add(dir.multiplyScalar(50)); 
                     } else {
                         endPt = intersectPts[i]; 
@@ -401,7 +427,7 @@
             });
 
             intersectDots.forEach((dot, i) => {
-                if(step >= 9 && hitDistances[i] < 15) {
+                if(step >= 10 && hitDistances[i] < 15) {
                     dot.visible = true;
                     dot.position.copy(intersectPts[i]);
                     dot.scale.set(1,1,1);
@@ -410,12 +436,15 @@
                 }
             });
 
-            if (step >= 3) {
+            if (step >= 4) {
                 controls.target.copy(targetVertex);
                 camera.position.set(targetVertex.x + 3, targetVertex.y + 3, targetVertex.z + 8);
+            } else if (step === 2 || step === 3) {
+                controls.target.set(0, coneHeight, 0);
+                camera.position.set(0.1, 10, 0.1);
             } else {
                 controls.target.copy(coneInitialPos);
-                camera.position.set(coneInitialPos.x, 4, 8);
+                camera.position.copy(startCamPos);
             }
         }
 
@@ -434,14 +463,38 @@
             }
             else if (step === 2) { 
                 [hLine, rLine, hypLine].forEach(l => tweenObj(l.material, { opacity: 0 }, 500).then(()=> l.visible = false));
+                
+                const panTarget = tweenObj(controls.target, {x: 0, y: coneHeight, z: 0}, 1000, TWEEN.Easing.Cubic.InOut);
+                const panCam = tweenObj(camera.position, {x: 0.1, y: 10, z: 0.1}, 1000, TWEEN.Easing.Cubic.InOut);
+
                 const promises = ptMeshes.map((pt, i) => {
                     pt.visible = true;
+                    pt.position.copy(ptData[i].pEdge);
                     pt.scale.set(0.01, 0.01, 0.01);
                     return tweenObj(pt.scale, {x:1, y:1, z:1}, 600, TWEEN.Easing.Back.Out);
                 });
+                
+                radialLines.forEach((rl) => {
+                    rl.visible = true;
+                    rl.material.opacity = 0;
+                    promises.push(tweenObj(rl.material, { opacity: 0.8 }, 600));
+                });
+                
+                promises.push(panTarget, panCam);
                 await Promise.all(promises);
             }
-            else if (step === 3) { 
+            else if (step === 3) {
+                const promises = ptMeshes.map((pt, i) => {
+                    return tweenObj(pt.position, {x: ptData[i].pInner.x, y: ptData[i].pInner.y, z: ptData[i].pInner.z}, 1000, TWEEN.Easing.Cubic.Out);
+                });
+                
+                radialLines.forEach(rl => {
+                    promises.push(tweenObj(rl.material, { opacity: 0 }, 800).then(() => rl.visible = false));
+                });
+                
+                await Promise.all(promises);
+            }
+            else if (step === 4) { 
                 const panTarget = tweenObj(controls.target, {x: targetVertex.x, y: targetVertex.y, z: targetVertex.z}, 1500, TWEEN.Easing.Cubic.InOut);
                 const panCam = tweenObj(camera.position, {x: targetVertex.x + 3, y: targetVertex.y + 3, z: targetVertex.z + 8}, 1500, TWEEN.Easing.Cubic.InOut);
                 
@@ -459,7 +512,10 @@
                     tweenObj({l:0}, {l:lenVec}, 600, TWEEN.Easing.Quadratic.Out, obj => arrInvNorm.setLength(obj.l, obj.l*0.2, obj.l*0.15))
                 ]);
             }
-            else if (step === 4) { 
+            else if (step === 5) { 
+                tweenObj({l:lenVec}, {l:0.01}, 400, TWEEN.Easing.Quadratic.In, obj => arrNorm.setLength(obj.l, obj.l*0.2, obj.l*0.15))
+                    .then(() => arrNorm.visible = false);
+
                 arrUp.visible = true; arrUp.setLength(0.01, 0, 0);
                 arrRight.visible = true; arrRight.setLength(0.01, 0, 0);
                 
@@ -468,24 +524,24 @@
                     tweenObj({l:0}, {l:lenVec}, 600, TWEEN.Easing.Quadratic.Out, obj => arrRight.setLength(obj.l, obj.l*0.2, obj.l*0.15))
                 ]);
             }
-            else if (step === 5) { 
+            else if (step === 6) { 
                 tweenObj({l:lenVec}, {l:0.01}, 400, TWEEN.Easing.Quadratic.In, obj => arrUp.setLength(obj.l, obj.l*0.2, obj.l*0.15))
                     .then(() => arrUp.visible = false);
 
                 arrTrueUp.visible = true; arrTrueUp.setLength(0.01, 0, 0);
                 await tweenObj({l:0}, {l:lenVec}, 600, TWEEN.Easing.Quadratic.Out, obj => arrTrueUp.setLength(obj.l, obj.l*0.2, obj.l*0.15));
             }
-            else if (step === 6) {
+            else if (step === 7) {
                 await new Promise(r => setTimeout(r, 600));
             }
-            else if (step === 7) { 
+            else if (step === 8) { 
                 const qStart = coneGroup.quaternion.clone();
                 const qTween = tweenObj({ t: 0 }, { t: 1 }, 1200, TWEEN.Easing.Cubic.InOut, obj => coneGroup.quaternion.slerpQuaternions(qStart, finalQuat, obj.t));
                 const pTween = tweenObj(coneGroup.position, {x: targetVertex.x, y: targetVertex.y, z: targetVertex.z}, 1200, TWEEN.Easing.Cubic.InOut);
                 
                 await Promise.all([pTween, qTween]);
             }
-            else if (step === 8) { 
+            else if (step === 9) { 
                 tweenObj(coneMesh.material, { opacity: 0 }, 800);
                 tweenObj(coneEdges.material, { opacity: 0 }, 800);
                 ptMeshes.forEach(pt => tweenObj(pt.scale, { x: 0.01, y: 0.01, z: 0.01 }, 800).then(() => pt.visible = false));
@@ -493,7 +549,7 @@
                 const promises = rays.map((r, i) => {
                     r.visible = true;
                     r.material.opacity = 0.8;
-                    const dir = targetPointsLocal[i].clone().normalize().applyQuaternion(finalQuat);
+                    const dir = ptData[i].pInner.clone().normalize().applyQuaternion(finalQuat);
                     const startPt = targetVertex;
                     const endPt = startPt.clone().add(dir.multiplyScalar(50)); 
                     return tweenObj({ t: 0 }, { t: 1 }, 800, TWEEN.Easing.Cubic.Out, obj => {
@@ -503,10 +559,10 @@
                 });
                 await Promise.all(promises);
             }
-            else if (step === 9) {
+            else if (step === 10) {
                 const promises = rays.map((r, i) => {
                     const startPt = targetVertex;
-                    const dir = targetPointsLocal[i].clone().normalize().applyQuaternion(finalQuat);
+                    const dir = ptData[i].pInner.clone().normalize().applyQuaternion(finalQuat);
                     const infPt = startPt.clone().add(dir.multiplyScalar(50));
                     const hitPt = intersectPts[i];
                     
