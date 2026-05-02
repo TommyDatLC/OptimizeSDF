@@ -52,13 +52,24 @@
             border-radius: 15px;
             border-left: 5px solid #2288FF;
             display: none;
-            transition: opacity 0.3s ease;
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
         }
         #h-label {
             position: absolute;
             color: #FFFF00;
             font-size: 35px;
             font-weight: bold;
+            pointer-events: none;
+            z-index: 15;
+            text-shadow: 2px 2px 4px #000;
+            display: none;
+            transform: translate(-50%, -50%);
+        }
+        #theta-label {
+            position: absolute;
+            color: #FFFFFF;
+            font-size: 35px;
             pointer-events: none;
             z-index: 15;
             text-shadow: 2px 2px 4px #000;
@@ -79,6 +90,7 @@
 <body>
 <div id="math-formula"></div>
 <div id="h-label">1</div>
+<div id="theta-label"></div>
 
 <div id="controls-hint">
     <span>🖱️ Trái: Bước tiếp theo</span>
@@ -112,8 +124,13 @@
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
+    // Bật tính năng tự động xoay camera
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 1.0;
     controls.target.set(0, 1.5, 0);
     controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: null };
+
+    window.isCameraPanning = false;
 
     scene.add(new THREE.AmbientLight(0xffffff, 0.6));
     const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
@@ -167,11 +184,11 @@
     scene.add(vertexDot);
 
     // ==========================================
-    // 3. TẠO HÌNH NÓN Ở TRUNG TÂM & ĐƯỜNG TOÁN HỌC
+    // 3. TẠO HÌNH NÓN Ở TRUNG TÂM & ĐƯỜNG TOÁN HỌC (ĐỊNH HƯỚNG THEO TRỤC Y)
     // ==========================================
     const coneHeight = 3.0;
-    const coneAngle = 35 * (Math.PI / 180);
-    const coneRadius = coneHeight * Math.tan(coneAngle);
+    const coneHalfAngle = 35 * (Math.PI / 180); // Nửa góc nón
+    const coneRadius = coneHeight * Math.tan(coneHalfAngle);
 
     const coneGroup = new THREE.Group();
     coneGroup.position.copy(coneInitialPos);
@@ -190,18 +207,39 @@
     const lineMatYellow = new THREE.LineBasicMaterial({ color: 0xFFFF00, linewidth: 3, transparent: true, opacity: 0 });
     const lineMatRed = new THREE.LineBasicMaterial({ color: 0xFF0000, linewidth: 3, transparent: true, opacity: 0 });
 
+    // Trục dọc theo phương Y
     const hLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0, coneHeight, 0)]), lineMatYellow);
+    // Bán kính theo phương X
     const rLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, coneHeight, 0), new THREE.Vector3(coneRadius, coneHeight, 0)]), lineMatRed);
+    // Cạnh huyền 1 & 2
     const hypLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(coneRadius, coneHeight, 0)]), lineMatYellow);
-    mathGroup.add(hLine, rLine, hypLine);
+    const hypLine2 = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(-coneRadius, coneHeight, 0)]), lineMatYellow);
+
+    mathGroup.add(hLine, rLine, hypLine, hypLine2);
+
+    // Vẽ cung tròn hiển thị góc Theta toàn phần (từ -halfAngle đến +halfAngle)
+    const arcRadius = 1.2;
+    const arcPts = [];
+    for (let i = -20; i <= 20; i++) {
+        const a = (i / 20) * coneHalfAngle;
+        arcPts.push(new THREE.Vector3(arcRadius * Math.sin(a), arcRadius * Math.cos(a), 0));
+    }
+    const arcLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(arcPts), new THREE.LineBasicMaterial({ color: 0xFFFFFF, linewidth: 2, transparent: true, opacity: 0 }));
+    mathGroup.add(arcLine);
+
     coneGroup.add(mathGroup);
 
-    hLine.visible = false; rLine.visible = false; hypLine.visible = false;
+    hLine.visible = false; rLine.visible = false; hypLine.visible = false; hypLine2.visible = false; arcLine.visible = false;
 
     const hMidPos = new THREE.Vector3(0, coneHeight / 2, 0);
+    // Đặt nhãn theta thấp xuống một chút để không trùng với số 1 (Y=1.5)
+    const thetaPos = new THREE.Vector3(0, arcRadius - 0.3, 0);
+
+    const thetaLabel = document.getElementById('theta-label');
+    katex.render("\\theta", thetaLabel, { throwOnError: false });
 
     // ==========================================
-    // 4. RANDOM POINTS (SIN/COS EDGE -> SQRT(U) INNER)
+    // 4. RANDOM POINTS (UNIT EDGE -> EDGE -> INNER)
     // ==========================================
     const pointsGroup = new THREE.Group();
     coneGroup.add(pointsGroup);
@@ -211,28 +249,40 @@
     const ptMeshes = [];
     const radialLines = [];
 
+    const circlePts = [];
+    for(let i=0; i<=64; i++) {
+        const a = i/64*Math.PI*2;
+        circlePts.push(new THREE.Vector3(Math.cos(a), 0, Math.sin(a)));
+    }
+    const circleGeo = new THREE.BufferGeometry().setFromPoints(circlePts);
+    const circleLine = new THREE.Line(circleGeo, new THREE.LineBasicMaterial({color: 0xAAAAAA, transparent: true, opacity: 0}));
+    circleLine.position.set(0, coneHeight, 0);
+    circleLine.visible = false;
+    coneGroup.add(circleLine);
+
     const centerBase = new THREE.Vector3(0, coneHeight, 0);
 
     for(let i=0; i<numPoints; i++){
-        const theta = Math.random() * Math.PI * 2;
+        const theta_rot = Math.random() * Math.PI * 2;
         const u1 = Math.random();
 
-        const r_edge = coneRadius;
-        const pEdge = new THREE.Vector3(r_edge * Math.cos(theta), coneHeight, r_edge * Math.sin(theta));
+        const pUnitEdge = new THREE.Vector3(Math.cos(theta_rot), coneHeight, Math.sin(theta_rot));
+        const pEdge = new THREE.Vector3(coneRadius * Math.cos(theta_rot), coneHeight, coneRadius * Math.sin(theta_rot));
 
         const r_inner = coneRadius * Math.sqrt(u1);
-        const pInner = new THREE.Vector3(r_inner * Math.cos(theta), coneHeight, r_inner * Math.sin(theta));
+        const pInner = new THREE.Vector3(r_inner * Math.cos(theta_rot), coneHeight, r_inner * Math.sin(theta_rot));
 
-        ptData.push({ pEdge, pInner });
+        ptData.push({ pUnitEdge, pEdge, pInner });
 
         const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8), new THREE.MeshBasicMaterial({ color: 0xFFFFFF }));
-        mesh.position.copy(pEdge);
+        mesh.position.copy(pUnitEdge);
         mesh.visible = false;
         pointsGroup.add(mesh);
         ptMeshes.push(mesh);
 
-        const rGeo = new THREE.BufferGeometry().setFromPoints([centerBase, pEdge]);
-        const rMat = new THREE.LineBasicMaterial({ color: 0xFF0000, transparent: true, opacity: 0 });
+        // Đường bán kính liên kết động với các hạt (Màu Đỏ)
+        const rGeo = new THREE.BufferGeometry().setFromPoints([centerBase, pUnitEdge]);
+        const rMat = new THREE.LineBasicMaterial({ color: 0xFF0000, transparent: true, opacity: 0, linewidth: 2 });
         const rLineObj = new THREE.Line(rGeo, rMat);
         rLineObj.visible = false;
         coneGroup.add(rLineObj);
@@ -309,53 +359,73 @@
     const avgDist = validHits.length > 0 ? (validHits.reduce((a,b)=>a+b, 0) / validHits.length) : 0;
 
     // ==========================================
-    // 7. CÔNG THỨC & STATE MACHINE (13 BƯỚC)
+    // 7. CÔNG THỨC & STATE MACHINE (14 BƯỚC)
     // ==========================================
     const mathFormulas = [
         "", // Step 0
-        "\\textcolor{#FF0000}{r} = 1 \\cdot \\tan(\\theta_{rand})", // Step 1
-        "\\begin{cases} x = \\textcolor{#FF0000}{r} \\cos(2\\pi u_{2rand}) \\\\ z = \\textcolor{#FF0000}{r} \\sin(2\\pi u_{2rand}) \\end{cases}", // Step 2
-        "\\begin{cases} x = \\textcolor{#FF0000}{r} \\sqrt{u_{1rand}} \\cos(2\\pi u_{2rand}) \\\\ z = \\textcolor{#FF0000}{r} \\sqrt{u_{1rand}} \\sin(2\\pi u_{2rand}) \\end{cases}", // Step 3
-        "\\vec{N}_{vertex}", // Step 4 (Chỉ hiển thị Normal Gốc)
-        "\\vec{Y} = \\textcolor{#00FFFF}{\\vec{N}_{inv}} = -\\vec{N}_{vertex}", // Step 5 (Lật Inverse Normal)
-        "\\vec{Up} = (0, 1, 0)", // Step 6 (Hiện Vector Up)
-        "\\textcolor{#FF0000}{\\vec{X}} = \\vec{Up} \\times \\vec{Y}", // Step 7 (Hiện Vector X)
-        "\\textcolor{#FF0000}{\\vec{X}} = \\vec{Up} \\times \\vec{Y}", // Step 8 (Xóa Vector Up - Giữ nguyên công thức)
-        "\\textcolor{#00FF00}{\\vec{Z}} = \\textcolor{#FF0000}{\\vec{X}} \\times \\vec{Y}", // Step 9 (Hiện Vector Z)
-        "M_{rot} = [\\textcolor{#FF0000}{\\vec{X}}, \\vec{Y}, \\textcolor{#00FF00}{\\vec{Z}}]", // Step 10
-        "M_{rot} \\times \\text{Random Vertex}_{rand}", // Step 11
-        "Ray_{irand} \\to \\infty", // Step 12
-        `d_{avg} = \\frac{1}{${validHits.length}} \\sum d_{irand} \\approx ${avgDist.toFixed(2)}` // Step 13
+        "{\\color{#FF0000}r} = 1 \\cdot \\tan(\\theta / 2)", // Step 1: r màu đỏ
+        "\\begin{cases} x = 1 \\cdot \\cos(2\\pi \\theta_{rand}) \\\\ z = 1 \\cdot \\sin(2\\pi \\theta_{rand}) \\end{cases}", // Step 2
+        "\\begin{cases} x = {\\color{#FF0000}r} \\cos(2\\pi \\theta_{rand}) \\\\ z = {\\color{#FF0000}r} \\sin(2\\pi \\theta_{rand}) \\end{cases}", // Step 3
+        "\\begin{cases} x = {\\color{#FF0000}r} \\sqrt{u_{1\\_rand}} \\cos(2\\pi \\theta_{rand}) \\\\ z = {\\color{#FF0000}r} \\sqrt{u_{1\\_rand}} \\sin(2\\pi \\theta_{rand}) \\end{cases}", // Step 4
+        "\\vec{N}_{vertex}", // Step 5
+        "{\\color{#00FFFF}\\vec{Y}} = {\\color{#00FFFF}\\vec{N}_{inv}} = -\\vec{N}_{vertex}", // Step 6
+        "\\vec{Up} = (0, 1, 0)", // Step 7
+        "{\\color{#FF0000}\\vec{X}} = \\vec{Up} \\times {\\color{#00FFFF}\\vec{Y}}", // Step 8
+        "{\\color{#FF0000}\\vec{X}} = \\vec{Up} \\times {\\color{#00FFFF}\\vec{Y}}", // Step 9
+        "{\\color{#00FF00}\\vec{Z}} = {\\color{#FF0000}\\vec{X}} \\times {\\color{#00FFFF}\\vec{Y}}", // Step 10
+        "M_{rot} = [{\\color{#FF0000}\\vec{X}}, {\\color{#00FFFF}\\vec{Y}}, {\\color{#00FF00}\\vec{Z}}]", // Step 11
+        "M_{rot} \\times \\text{Random Vertex}_{rand}", // Step 12
+        "Ray_{i\\_rand} \\to \\infty", // Step 13
+        `d_{avg} = \\frac{1}{${validHits.length}} \\sum d_{i\\_rand} \\approx ${avgDist.toFixed(2)}` // Step 14
     ];
 
     const mathOverlay = document.getElementById('math-formula');
     const hLabel = document.getElementById('h-label');
 
-    function updateMathFormula(step) {
+    function updateMathFormulaImmediate(step) {
+        if (step === 0) {
+            mathOverlay.style.opacity = 0;
+            mathOverlay.style.display = 'none';
+        } else {
+            mathOverlay.style.display = 'block';
+            katex.render(mathFormulas[step], mathOverlay, { throwOnError: false });
+            mathOverlay.style.opacity = 1;
+        }
+    }
+
+    async function changeMathFormula(step) {
+        if (mathOverlay.style.opacity > 0 && mathOverlay.style.display !== 'none') {
+            mathOverlay.style.opacity = 0;
+            await new Promise(r => setTimeout(r, 300));
+        }
         if (step === 0) {
             mathOverlay.style.display = 'none';
         } else {
             mathOverlay.style.display = 'block';
             katex.render(mathFormulas[step], mathOverlay, { throwOnError: false });
+            mathOverlay.style.opacity = 1;
         }
     }
 
     function updateLabels() {
         if (window.currentStep === 1) {
             hLabel.style.display = 'block';
-            const vector = hMidPos.clone();
-            vector.applyMatrix4(coneGroup.matrixWorld);
-            vector.project(camera);
-            const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
-            const y = (vector.y * -0.5 + 0.5) * window.innerHeight;
-            hLabel.style.left = `${x + 15}px`;
-            hLabel.style.top = `${y}px`;
+            thetaLabel.style.display = 'block';
+
+            const v1 = hMidPos.clone().applyMatrix4(coneGroup.matrixWorld).project(camera);
+            hLabel.style.left = `${(v1.x * 0.5 + 0.5) * window.innerWidth + 15}px`;
+            hLabel.style.top = `${(v1.y * -0.5 + 0.5) * window.innerHeight}px`;
+
+            const vTheta = thetaPos.clone().applyMatrix4(coneGroup.matrixWorld).project(camera);
+            thetaLabel.style.left = `${(vTheta.x * 0.5 + 0.5) * window.innerWidth}px`;
+            thetaLabel.style.top = `${(vTheta.y * -0.5 + 0.5) * window.innerHeight}px`;
         } else {
             hLabel.style.display = 'none';
+            thetaLabel.style.display = 'none';
         }
     }
 
-    const MAX_STEPS = 13;
+    const MAX_STEPS = 14;
     window.currentStep = 0;
     let isAnimating = false;
 
@@ -367,11 +437,10 @@
         });
     }
 
-    function snapToStep(step) {
-        updateMathFormula(step);
+    function snapToStep(step, snapCamera = true) {
+        updateMathFormulaImmediate(step);
 
-        // Xử lý Vị trí Cone
-        if (step >= 11) {
+        if (step >= 12) {
             coneGroup.position.copy(targetVertex);
             coneGroup.quaternion.copy(finalQuat);
         } else {
@@ -379,71 +448,73 @@
             coneGroup.quaternion.identity();
         }
 
-        // Xử lý Vỏ Cone
-        coneMesh.material.opacity = (step >= 1 && step < 12) ? 0.3 : 0;
-        coneEdges.material.opacity = (step >= 1 && step < 12) ? 0.7 : 0;
+        coneMesh.material.opacity = (step >= 1 && step < 13) ? 0.3 : 0;
+        coneEdges.material.opacity = (step >= 1 && step < 13) ? 0.7 : 0;
 
-        [hLine, rLine, hypLine].forEach(l => {
+        [hLine, rLine, hypLine, hypLine2, arcLine].forEach(l => {
             l.visible = (step === 1);
             l.material.opacity = (step === 1) ? 1 : 0;
         });
 
-        // Xử lý Hạt Điểm
         ptMeshes.forEach((pt, i) => {
-            pt.visible = (step >= 2 && step < 13);
-            pt.material.opacity = (step >= 2 && step < 13) ? 1 : 0;
+            pt.visible = (step >= 2 && step < 14);
+            pt.material.opacity = (step >= 2 && step < 14) ? 1 : 0;
             pt.scale.set(1, 1, 1);
             if (step === 2) {
+                pt.position.copy(ptData[i].pUnitEdge);
+            } else if (step === 3) {
                 pt.position.copy(ptData[i].pEdge);
-            } else if (step >= 3) {
+            } else if (step >= 4) {
                 pt.position.copy(ptData[i].pInner);
             }
         });
 
         radialLines.forEach((rl) => {
-            rl.visible = (step === 2);
-            rl.material.opacity = (step === 2) ? 0.8 : 0;
+            rl.visible = (step >= 2 && step < 13);
+            rl.material.opacity = (step >= 2 && step < 13) ? 0.8 : 0;
         });
 
-        // Xử lý Vectors
-        vertexDot.visible = (step >= 4);
+        circleLine.visible = (step === 2 || step === 3);
+        circleLine.material.opacity = (step === 2 || step === 3) ? 0.8 : 0;
+        const c_sc = (step === 2) ? 1.0 : coneRadius;
+        circleLine.scale.set(c_sc, c_sc, c_sc);
+
+        vertexDot.visible = (step >= 5);
         vertexDot.scale.set(1, 1, 1);
 
-        arrNorm.visible = (step === 4);
-        if (step === 4) arrNorm.setLength(lenVec, lenVec*0.2, lenVec*0.15);
+        arrNorm.visible = (step === 5);
+        if (step === 5) arrNorm.setLength(lenVec, lenVec*0.2, lenVec*0.15);
 
-        arrInvNorm.visible = (step >= 5);
-        if (step >= 5) arrInvNorm.setLength(lenVec, lenVec*0.2, lenVec*0.15);
+        arrInvNorm.visible = (step >= 6);
+        if (step >= 6) arrInvNorm.setLength(lenVec, lenVec*0.2, lenVec*0.15);
 
-        arrUp.visible = (step === 6 || step === 7);
-        if (step === 6 || step === 7) arrUp.setLength(lenVec, lenVec*0.2, lenVec*0.15);
+        arrUp.visible = (step === 7 || step === 8);
+        if (step === 7 || step === 8) arrUp.setLength(lenVec, lenVec*0.2, lenVec*0.15);
 
-        arrRight.visible = (step >= 7);
-        if (step >= 7) arrRight.setLength(lenVec, lenVec*0.2, lenVec*0.15);
+        arrRight.visible = (step >= 8);
+        if (step >= 8) arrRight.setLength(lenVec, lenVec*0.2, lenVec*0.15);
 
-        arrTrueUp.visible = (step >= 9);
-        if (step >= 9) arrTrueUp.setLength(lenVec, lenVec*0.2, lenVec*0.15);
+        arrTrueUp.visible = (step >= 10);
+        if (step >= 10) arrTrueUp.setLength(lenVec, lenVec*0.2, lenVec*0.15);
 
-        // Xử lý Ray
         rays.forEach((r, i) => {
-            r.visible = (step >= 12);
-            if (step >= 12) {
+            r.visible = (step >= 13);
+            if (step >= 13) {
                 r.material.opacity = 0.8;
                 const startPt = targetVertex;
                 let endPt;
-                if (step === 12) {
+                if (step === 13) {
                     const dir = ptData[i].pInner.clone().normalize().applyQuaternion(finalQuat);
                     endPt = startPt.clone().add(dir.multiplyScalar(50));
-                } else { // step 13
+                } else {
                     endPt = intersectPts[i];
                 }
                 r.geometry.setFromPoints([startPt, endPt]);
             }
         });
 
-        // Giao điểm (Hit Dot)
         intersectDots.forEach((dot, i) => {
-            if(step >= 13 && hitDistances[i] < 15) {
+            if(step >= 14 && hitDistances[i] < 15) {
                 dot.visible = true;
                 dot.position.copy(intersectPts[i]);
                 dot.scale.set(1,1,1);
@@ -452,41 +523,55 @@
             }
         });
 
-        // Xử lý Camera
-        if (step >= 4) {
-            controls.target.copy(targetVertex);
-            camera.position.set(targetVertex.x + 3, targetVertex.y + 3, targetVertex.z + 8);
-        } else if (step === 2 || step === 3) {
-            controls.target.set(0, coneHeight, 0);
-            camera.position.set(0.1, 10, 0.1);
-        } else {
-            controls.target.copy(coneInitialPos);
-            camera.position.copy(startCamPos);
+        // Camera Snap Logic
+        if (snapCamera) {
+            if (step >= 13) {
+                controls.target.copy(targetVertex);
+                camera.position.set(targetVertex.x - 5, targetVertex.y + 2, targetVertex.z + 8);
+            } else if (step >= 12) {
+                controls.target.copy(targetVertex);
+                camera.position.set(targetVertex.x + 6, targetVertex.y + 4, targetVertex.z + 4);
+            } else if (step >= 5) {
+                controls.target.copy(targetVertex);
+                camera.position.set(targetVertex.x + 3, targetVertex.y + 3, targetVertex.z + 8);
+            } else if (step >= 2 && step <= 4) {
+                controls.target.set(0, coneHeight, 0);
+                camera.position.set(0.1, 12, 0.1);
+            } else {
+                controls.target.copy(coneInitialPos);
+                camera.position.copy(startCamPos);
+            }
         }
     }
 
     async function animateTransition(step) {
-        updateMathFormula(step);
+        changeMathFormula(step);
 
         if (step === 1) {
-            [hLine, rLine, hypLine].forEach(l => l.visible = true);
+            [hLine, rLine, hypLine, hypLine2, arcLine].forEach(l => l.visible = true);
             await Promise.all([
                 tweenObj(coneMesh.material, { opacity: 0.3 }, 800),
                 tweenObj(coneEdges.material, { opacity: 0.7 }, 800),
                 tweenObj(hLine.material, { opacity: 1 }, 800)
             ]);
-            await tweenObj(rLine.material, { opacity: 1 }, 600);
-            await tweenObj(hypLine.material, { opacity: 1 }, 600);
+            await Promise.all([
+                tweenObj(arcLine.material, { opacity: 1 }, 600),
+                tweenObj(rLine.material, { opacity: 1 }, 600),
+                tweenObj(hypLine.material, { opacity: 1 }, 600),
+                tweenObj(hypLine2.material, { opacity: 1 }, 600)
+            ]);
         }
         else if (step === 2) {
-            [hLine, rLine, hypLine].forEach(l => tweenObj(l.material, { opacity: 0 }, 500).then(()=> l.visible = false));
+            [hLine, rLine, hypLine, hypLine2, arcLine].forEach(l => tweenObj(l.material, { opacity: 0 }, 500).then(()=> l.visible = false));
 
-            const panTarget = tweenObj(controls.target, {x: 0, y: coneHeight, z: 0}, 1000, TWEEN.Easing.Cubic.InOut);
-            const panCam = tweenObj(camera.position, {x: 0.1, y: 10, z: 0.1}, 1000, TWEEN.Easing.Cubic.InOut);
+            // Trượt Camera mềm mại từ vị trí hiện tại của user về Top-Down
+            window.isCameraPanning = true;
+            const panTarget = tweenObj(controls.target, {x: 0, y: coneHeight, z: 0}, 1500, TWEEN.Easing.Cubic.InOut);
+            const panCam = tweenObj(camera.position, {x: 0.1, y: 12, z: 0.1}, 1500, TWEEN.Easing.Cubic.InOut);
 
             const promises = ptMeshes.map((pt, i) => {
                 pt.visible = true;
-                pt.position.copy(ptData[i].pEdge);
+                pt.position.copy(ptData[i].pUnitEdge);
                 pt.scale.set(0.01, 0.01, 0.01);
                 return tweenObj(pt.scale, {x:1, y:1, z:1}, 600, TWEEN.Easing.Back.Out);
             });
@@ -497,21 +582,34 @@
                 promises.push(tweenObj(rl.material, { opacity: 0.8 }, 600));
             });
 
-            promises.push(panTarget, panCam);
+            circleLine.visible = true;
+            circleLine.scale.set(1, 1, 1);
+            circleLine.material.opacity = 0;
+            promises.push(tweenObj(circleLine.material, { opacity: 0.8 }, 600));
+
+            promises.push(
+                Promise.all([panTarget, panCam]).then(() => { window.isCameraPanning = false; })
+            );
             await Promise.all(promises);
         }
         else if (step === 3) {
+            // Giãn nở đường tròn và điểm ra khớp với r
             const promises = ptMeshes.map((pt, i) => {
-                return tweenObj(pt.position, {x: ptData[i].pInner.x, y: ptData[i].pInner.y, z: ptData[i].pInner.z}, 1000, TWEEN.Easing.Cubic.Out);
+                return tweenObj(pt.position, {x: ptData[i].pEdge.x, y: ptData[i].pEdge.y, z: ptData[i].pEdge.z}, 1000, TWEEN.Easing.Cubic.InOut);
             });
 
-            radialLines.forEach(rl => {
-                promises.push(tweenObj(rl.material, { opacity: 0 }, 800).then(() => rl.visible = false));
-            });
-
+            promises.push(tweenObj(circleLine.scale, { x: coneRadius, y: coneRadius, z: coneRadius }, 1000, TWEEN.Easing.Cubic.InOut));
             await Promise.all(promises);
         }
         else if (step === 4) {
+            const promises = ptMeshes.map((pt, i) => {
+                return tweenObj(pt.position, {x: ptData[i].pInner.x, y: ptData[i].pInner.y, z: ptData[i].pInner.z}, 1000, TWEEN.Easing.Cubic.Out);
+            });
+            promises.push(tweenObj(circleLine.material, { opacity: 0 }, 800).then(() => circleLine.visible = false));
+            await Promise.all(promises);
+        }
+        else if (step === 5) {
+            window.isCameraPanning = true;
             const panTarget = tweenObj(controls.target, {x: targetVertex.x, y: targetVertex.y, z: targetVertex.z}, 1500, TWEEN.Easing.Cubic.InOut);
             const panCam = tweenObj(camera.position, {x: targetVertex.x + 3, y: targetVertex.y + 3, z: targetVertex.z + 8}, 1500, TWEEN.Easing.Cubic.InOut);
 
@@ -519,15 +617,16 @@
             vertexDot.scale.set(0.01, 0.01, 0.01);
             tweenObj(vertexDot.scale, {x:1, y:1, z:1}, 1000, TWEEN.Easing.Back.Out);
 
-            await Promise.all([panTarget, panCam]);
+            const promisesArray = [
+                Promise.all([panTarget, panCam]).then(() => { window.isCameraPanning = false; })
+            ];
+            await Promise.all(promisesArray);
 
             arrNorm.visible = true;
             arrNorm.setLength(0.01, 0, 0);
-
             await tweenObj({l:0}, {l:lenVec}, 600, TWEEN.Easing.Quadratic.Out, obj => arrNorm.setLength(obj.l, obj.l*0.2, obj.l*0.15));
         }
-        else if (step === 5) {
-            // Biến đổi Normal thành Inverse Normal
+        else if (step === 6) {
             arrInvNorm.visible = true;
             arrInvNorm.setLength(0.01, 0, 0);
 
@@ -536,38 +635,44 @@
                 tweenObj({l:0}, {l:lenVec}, 600, TWEEN.Easing.Quadratic.Out, obj => arrInvNorm.setLength(obj.l, obj.l*0.2, obj.l*0.15))
             ]).then(() => arrNorm.visible = false);
         }
-        else if (step === 6) {
+        else if (step === 7) {
             arrUp.visible = true; arrUp.setLength(0.01, 0, 0);
             await tweenObj({l:0}, {l:lenVec}, 600, TWEEN.Easing.Quadratic.Out, obj => arrUp.setLength(obj.l, obj.l*0.2, obj.l*0.15));
         }
-        else if (step === 7) {
+        else if (step === 8) {
             arrRight.visible = true; arrRight.setLength(0.01, 0, 0);
             await tweenObj({l:0}, {l:lenVec}, 600, TWEEN.Easing.Quadratic.Out, obj => arrRight.setLength(obj.l, obj.l*0.2, obj.l*0.15));
         }
-        else if (step === 8) {
-            // Xóa Vector Up
+        else if (step === 9) {
             await tweenObj({l:lenVec}, {l:0.01}, 400, TWEEN.Easing.Quadratic.In, obj => arrUp.setLength(obj.l, obj.l*0.2, obj.l*0.15))
                 .then(() => arrUp.visible = false);
         }
-        else if (step === 9) {
+        else if (step === 10) {
             arrTrueUp.visible = true; arrTrueUp.setLength(0.01, 0, 0);
             await tweenObj({l:0}, {l:lenVec}, 600, TWEEN.Easing.Quadratic.Out, obj => arrTrueUp.setLength(obj.l, obj.l*0.2, obj.l*0.15));
         }
-        else if (step === 10) {
-            // Chỉ hiển thị Matrix M_rot
+        else if (step === 11) {
             await new Promise(r => setTimeout(r, 600));
         }
-        else if (step === 11) {
+        else if (step === 12) {
+            window.isCameraPanning = true;
+            const panTarget = tweenObj(controls.target, {x: targetVertex.x, y: targetVertex.y, z: targetVertex.z}, 1200, TWEEN.Easing.Cubic.InOut);
+            const panCam = tweenObj(camera.position, {x: targetVertex.x + 6, y: targetVertex.y + 4, z: targetVertex.z + 4}, 1200, TWEEN.Easing.Cubic.InOut);
+
             const qStart = coneGroup.quaternion.clone();
             const qTween = tweenObj({ t: 0 }, { t: 1 }, 1200, TWEEN.Easing.Cubic.InOut, obj => coneGroup.quaternion.slerpQuaternions(qStart, finalQuat, obj.t));
             const pTween = tweenObj(coneGroup.position, {x: targetVertex.x, y: targetVertex.y, z: targetVertex.z}, 1200, TWEEN.Easing.Cubic.InOut);
 
-            await Promise.all([pTween, qTween]);
+            await Promise.all([pTween, qTween, panTarget, panCam]).then(() => { window.isCameraPanning = false; });
         }
-        else if (step === 12) {
-            // Bắn tia xuyên qua random vertex
+        else if (step === 13) {
+            window.isCameraPanning = true;
+            const panTarget = tweenObj(controls.target, {x: targetVertex.x, y: targetVertex.y, z: targetVertex.z}, 1200, TWEEN.Easing.Cubic.InOut);
+            const panCam = tweenObj(camera.position, {x: targetVertex.x - 5, y: targetVertex.y + 2, z: targetVertex.z + 8}, 1200, TWEEN.Easing.Cubic.InOut);
+
             tweenObj(coneMesh.material, { opacity: 0 }, 800);
             tweenObj(coneEdges.material, { opacity: 0 }, 800);
+            radialLines.forEach(rl => tweenObj(rl.material, { opacity: 0 }, 800).then(() => rl.visible = false));
 
             const promises = rays.map((r, i) => {
                 r.visible = true;
@@ -580,10 +685,11 @@
                     r.geometry.setFromPoints([startPt, currentEnd]);
                 });
             });
-            await Promise.all(promises);
+
+            promises.push(panTarget, panCam);
+            await Promise.all(promises).then(() => { window.isCameraPanning = false; });
         }
-        else if (step === 13) {
-            // Tính trung bình khoảng cách, cắt Ray
+        else if (step === 14) {
             ptMeshes.forEach(pt => tweenObj(pt.material, { opacity: 0 }, 500).then(() => pt.visible = false));
 
             const promises = rays.map((r, i) => {
@@ -611,13 +717,26 @@
     async function goToStep(step) {
         step = Math.max(0, Math.min(step, MAX_STEPS));
         if (step === window.currentStep && !isAnimating) return;
+
         TWEEN.removeAll();
+        window.isCameraPanning = false;
+
         if (step < window.currentStep) {
-            window.currentStep = step; snapToStep(window.currentStep); isAnimating = false;
+            window.currentStep = step;
+            snapToStep(window.currentStep, true);
+            isAnimating = false;
         } else {
-            if (isAnimating) { snapToStep(window.currentStep); isAnimating = false; return; }
-            isAnimating = true; snapToStep(window.currentStep); window.currentStep = step;
-            await animateTransition(window.currentStep); isAnimating = false;
+            if (isAnimating) {
+                snapToStep(window.currentStep, true);
+                isAnimating = false;
+                return;
+            }
+            isAnimating = true;
+            // Không snap camera khi tiến, trượt mượt mà từ vị trí người dùng đang ngắm
+            snapToStep(window.currentStep, false);
+            window.currentStep = step;
+            await animateTransition(window.currentStep);
+            isAnimating = false;
         }
     }
 
@@ -643,7 +762,18 @@
     function animate(time) {
         requestAnimationFrame(animate);
         TWEEN.update(time);
+
+        // Liên tục cập nhật các đường tia đỏ bám dính vào hạt
+        radialLines.forEach((rl, i) => {
+            if (rl.visible) {
+                rl.geometry.setFromPoints([new THREE.Vector3(0, coneHeight, 0), ptMeshes[i].position]);
+            }
+        });
+
+        // Auto Rotate chỉ hoạt động khi Camera không bị Panning bởi Code
+        controls.autoRotate = !window.isCameraPanning;
         controls.update();
+
         updateLabels();
         renderer.render(scene, camera);
     }

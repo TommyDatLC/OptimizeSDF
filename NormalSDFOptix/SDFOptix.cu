@@ -39,7 +39,7 @@ __device__ float3 SampleCone(float3 normal, float2 randVal, float angleRad) {
     // 2. TƯ DUY MỚI: Tưởng tượng một cái "Bia bắn cung" hình tròn phẳng
     // Đặt cái bia này cách điểm bắn đúng 1 mét (z = 1).
     // Dùng lượng giác cơ bản: Bán kính lớn nhất của bia = tan(góc_mở)
-    float maxRadius = tanf(angleRad);
+    float maxRadius = tanf(angleRad / 2);
 
     // 3. CHỌN MỘT ĐIỂM NGẪU NHIÊN BÊN TRONG DIỆN TÍCH HÌNH TRÒN ĐÓ
     // BÍ THUẬT: Phải có Căn Bậc Hai sqrtf() thì đạn mới tản đều khắp mặt bia.
