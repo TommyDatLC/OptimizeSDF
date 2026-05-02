@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CUDA Normal Raycasting</title>
+    <!-- Include KaTeX for Math Formatting -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+
     <style>
         body {
             margin: 0;
@@ -26,9 +30,31 @@
             font-size: 14px;
             pointer-events: none;
             letter-spacing: 1px;
+            z-index: 10;
         }
         #controls-hint span {
             margin: 0 15px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 8px 16px;
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        /* Style cho Công thức Toán học */
+        #math-formula {
+            position: absolute;
+            top: 30px;
+            left: 30px;
+            color: #FFFFFF;
+            font-size: 35px;
+            text-shadow: 2px 2px 10px rgba(0,0,0,0.8);
+            pointer-events: none;
+            z-index: 20;
+            background: rgba(0, 0, 0, 0.4);
+            padding: 10px 25px;
+            border-radius: 15px;
+            border-left: 5px solid #2288FF;
+            display: none;
+            transition: opacity 0.3s ease;
         }
     </style>
     <script type="importmap">
@@ -42,434 +68,449 @@
     </script>
 </head>
 <body>
-    <div id="controls-hint">
-        <span>🖱️ Trái: Tiếp theo</span> | 
-        <span>🖱️ Phải: Quay lại</span> | 
-        <span>🖐️ Kéo thả: Xoay mô hình</span>
-    </div>
+<!-- Overlay Elements -->
+<div id="math-formula"></div>
 
-    <script type="module">
-        import * as THREE from 'three';
-        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-        import TWEEN from '@tweenjs/tween.js';
+<div id="controls-hint">
+    <span>🖱️ Left Click: Next</span>
+    <span>🖱️ Right Click: Previous</span>
+    <span>🖐️ Drag: Rotate</span>
+</div>
 
-        // ==========================================
-        // 1. SETUP SCENE, CAMERA, RENDERER
-        // ==========================================
-        const scene = new THREE.Scene();
-        
-        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
-        camera.position.set(0, 4, 11); // Điều chỉnh camera để nhìn trọn vẹn khối kim cương
-        
-        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(window.devicePixelRatio);
-        document.body.appendChild(renderer.domElement);
+<script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import TWEEN from '@tweenjs/tween.js';
 
-        const controls = new OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true;
-        controls.dampingFactor = 0.05;
-        controls.target.set(0, 0, 0); // Nhìn vào tâm khối thoi
-        
-        controls.mouseButtons = {
-            LEFT: THREE.MOUSE.ROTATE,
-            MIDDLE: THREE.MOUSE.DOLLY,
-            RIGHT: null 
-        };
+    // ==========================================
+    // 1. SETUP SCENE, CAMERA, RENDERER
+    // ==========================================
+    const scene = new THREE.Scene();
 
-        scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-        const dirLight = new THREE.DirectionalLight(0xffffff, 1);
-        dirLight.position.set(5, 10, 5);
-        scene.add(dirLight);
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(0, 4, 11);
 
-        // ==========================================
-        // 2. CREATE GEOMETRY (KHỐI BÁT DIỆN / HÌNH THOI)
-        // ==========================================
-        // Định nghĩa 6 đỉnh của khối kim cương
-        const topP = new THREE.Vector3(0, 3, 0);
-        const botP = new THREE.Vector3(0, -3, 0);
-        const frontP = new THREE.Vector3(0, 0, 3);
-        const rightP = new THREE.Vector3(3, 0, 0);
-        const backP = new THREE.Vector3(0, 0, -3);
-        const leftP = new THREE.Vector3(-3, 0, 0);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    document.body.appendChild(renderer.domElement);
 
-        // Đỉnh mà ta sẽ làm mục tiêu tính Vertex Normal (Đỉnh trên cùng)
-        const centerPt = topP; 
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.target.set(0, 0, 0);
 
-        // 8 mặt của khối kim cương
-        const rawFaces = [
-            [topP, frontP, rightP], // 0: Nửa trên
-            [topP, rightP, backP],  // 1
-            [topP, backP, leftP],   // 2
-            [topP, leftP, frontP],  // 3
-            [botP, rightP, frontP], // 4: Nửa dưới (Thứ tự đỉnh đảm bảo pháp tuyến hướng ra ngoài)
-            [botP, backP, rightP],  // 5
-            [botP, leftP, backP],   // 6
-            [botP, frontP, leftP]   // 7
-        ];
-        
-        const numFaces = 8;
-        const faces = [];
-        const faceGroups = []; 
-        const origPositions = [];
-        const origQuaternions = [];
-        const listPositions = [];
-        const listQuaternions = [];
+    controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: null };
 
-        const COLOR_DEFAULT = 0x1144AA;
-        const COLOR_HIGHLIGHT = 0xFFFF00;
-        const COLOR_V1 = 0xFFFF00;
-        const COLOR_V2 = 0x00FF00;
-        const COLOR_FACE_NORMAL = 0xFF0000;
-        const COLOR_SUM = 0x9B59B6;
-        const COLOR_VERTEX_NORMAL = 0x00FFFF;
+    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+    dirLight.position.set(5, 10, 5);
+    scene.add(dirLight);
 
-        // Xếp các mặt thành lưới 2x4 để đại diện cho các luồng xử lý song song
-        const baseListQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 6, 0, 0));
+    // ==========================================
+    // 2. CREATE GEOMETRY (KHỐI BÁT DIỆN / HÌNH THOI)
+    // ==========================================
+    const topP = new THREE.Vector3(0, 3, 0);
+    const botP = new THREE.Vector3(0, -3, 0);
+    const frontP = new THREE.Vector3(0, 0, 3);
+    const rightP = new THREE.Vector3(3, 0, 0);
+    const backP = new THREE.Vector3(0, 0, -3);
+    const leftP = new THREE.Vector3(-3, 0, 0);
 
-        for (let i = 0; i < numFaces; i++) {
-            const p0 = rawFaces[i][0];
-            const p1 = rawFaces[i][1];
-            const p2 = rawFaces[i][2];
-            
-            // Tính toán Trọng tâm của từng tam giác
-            const centroid = new THREE.Vector3().add(p0).add(p1).add(p2).divideScalar(3);
-            
-            // Tọa độ Local (Chuẩn bị xoay và tịnh tiến tự do)
-            const locP0 = p0.clone().sub(centroid);
-            const locP1 = p1.clone().sub(centroid);
-            const locP2 = p2.clone().sub(centroid);
+    const centerPt = topP;
 
-            const geometry = new THREE.BufferGeometry().setFromPoints([locP0, locP1, locP2]);
-            geometry.computeVertexNormals();
+    const rawFaces = [
+        [topP, frontP, rightP],
+        [topP, rightP, backP],
+        [topP, backP, leftP],
+        [topP, leftP, frontP],
+        [botP, rightP, frontP],
+        [botP, backP, rightP],
+        [botP, leftP, backP],
+        [botP, frontP, leftP]
+    ];
 
-            const material = new THREE.MeshBasicMaterial({
-                color: COLOR_DEFAULT,
-                transparent: true,
-                opacity: 0.4,
-                side: THREE.DoubleSide,
-                depthWrite: false
-            });
+    const numFaces = 8;
+    const faces = [];
+    const faceGroups = [];
+    const origPositions = [];
+    const origQuaternions = [];
+    const listPositions = [];
+    const listQuaternions = [];
 
-            const group = new THREE.Group();
-            group.position.copy(centroid); 
+    const COLOR_DEFAULT = 0x1144AA;
+    const COLOR_HIGHLIGHT = 0xFFFF00;
+    const COLOR_V1 = 0xFFFF00; // Vàng
+    const COLOR_V2 = 0x00FF00; // Xanh lá
+    const COLOR_FACE_NORMAL = 0xFF0000; // Đỏ
+    const COLOR_SUM = 0x9B59B6; // Tím
+    const COLOR_VERTEX_NORMAL = 0x00FFFF; // Cyan
 
-            const mesh = new THREE.Mesh(geometry, material);
-            group.add(mesh);
-            faces.push(mesh); 
+    const baseListQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 6, 0, 0));
 
-            const edgeGeo = new THREE.EdgesGeometry(geometry);
-            const edgeMat = new THREE.LineBasicMaterial({ color: 0x4488FF, transparent: true, opacity: 0.5 });
-            group.add(new THREE.LineSegments(edgeGeo, edgeMat));
+    for (let i = 0; i < numFaces; i++) {
+        const p0 = rawFaces[i][0];
+        const p1 = rawFaces[i][1];
+        const p2 = rawFaces[i][2];
 
-            scene.add(group);
-            faceGroups.push(group);
+        const centroid = new THREE.Vector3().add(p0).add(p1).add(p2).divideScalar(3);
 
-            origPositions.push(centroid.clone());
-            origQuaternions.push(group.quaternion.clone());
+        const locP0 = p0.clone().sub(centroid);
+        const locP1 = p1.clone().sub(centroid);
+        const locP2 = p2.clone().sub(centroid);
 
-            // Tọa độ lưới 2D (List 2D: 2 hàng x 4 cột)
-            const row = Math.floor(i / 4);
-            const col = i % 4;
-            listPositions.push(new THREE.Vector3((col - 1.5) * 2.8, 2.0 - row * 3.0, 0));
-            listQuaternions.push(baseListQuat.clone());
+        const geometry = new THREE.BufferGeometry().setFromPoints([locP0, locP1, locP2]);
+        geometry.computeVertexNormals();
+
+        const material = new THREE.MeshBasicMaterial({
+            color: COLOR_DEFAULT,
+            transparent: true,
+            opacity: 0.4,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+
+        const group = new THREE.Group();
+        group.position.copy(centroid);
+
+        const mesh = new THREE.Mesh(geometry, material);
+        group.add(mesh);
+        faces.push(mesh);
+
+        const edgeGeo = new THREE.EdgesGeometry(geometry);
+        const edgeMat = new THREE.LineBasicMaterial({ color: 0x4488FF, transparent: true, opacity: 0.5 });
+        group.add(new THREE.LineSegments(edgeGeo, edgeMat));
+
+        scene.add(group);
+        faceGroups.push(group);
+
+        origPositions.push(centroid.clone());
+        origQuaternions.push(group.quaternion.clone());
+
+        const row = Math.floor(i / 4);
+        const col = i % 4;
+        listPositions.push(new THREE.Vector3((col - 1.5) * 2.8, 2.0 - row * 3.0, 0));
+        listQuaternions.push(baseListQuat.clone());
+    }
+
+    const dotGeo = new THREE.SphereGeometry(0.08, 16, 16);
+    const dotMat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF });
+    const centerDot = new THREE.Mesh(dotGeo, dotMat);
+    centerDot.position.copy(centerPt);
+    scene.add(centerDot);
+
+    // ==========================================
+    // 3. TOÁN HỌC & KHỞI TẠO VECTORS TRƯỚC
+    // ==========================================
+    function createArrow(origin, dir, length, colorHex) {
+        const arrow = new THREE.ArrowHelper(dir.clone().normalize(), origin, length, colorHex, 0.2, 0.15);
+        arrow.visible = false;
+        scene.add(arrow);
+        return arrow;
+    }
+
+    const v1_dir = new THREE.Vector3().subVectors(rawFaces[0][1], rawFaces[0][0]);
+    const v2_dir = new THREE.Vector3().subVectors(rawFaces[0][2], rawFaces[0][0]);
+    const v1_len = v1_dir.length();
+    const v2_len = v2_dir.length();
+
+    const centroids = origPositions;
+    const n_dirs = [];
+    for (let i = 0; i < numFaces; i++) {
+        const p0 = rawFaces[i][0];
+        const p1 = rawFaces[i][1];
+        const p2 = rawFaces[i][2];
+        const vb = new THREE.Vector3().subVectors(p1, p0);
+        const vc = new THREE.Vector3().subVectors(p2, p0);
+        const ni = new THREE.Vector3().crossVectors(vb, vc).normalize();
+        n_dirs.push(ni);
+    }
+
+    const sum_vec = new THREE.Vector3();
+    for(let i=0; i<4; i++) {
+        sum_vec.add(n_dirs[i]);
+    }
+    const sum_len = sum_vec.length();
+
+    const arr1 = createArrow(centerPt, v1_dir, v1_len, COLOR_V1);
+    const arr2 = createArrow(centerPt, v2_dir, v2_len, COLOR_V2);
+
+    const normalArrows = [];
+    for (let i = 0; i < numFaces; i++) {
+        normalArrows.push(createArrow(centroids[i], n_dirs[i], 1.5, COLOR_FACE_NORMAL));
+    }
+
+    const sumArrow = createArrow(centerPt, sum_vec, sum_len, COLOR_SUM);
+
+    // ==========================================
+    // 4. CÔNG THỨC TOÁN HỌC (KATEX)
+    // ==========================================
+    const mathFormulas = [
+        "", // Step 0
+        "\\text{CUDA Threads: Process each faces}", // Step 1
+        "\\textcolor{#FFFF00}{\\vec{v}_1} = P_1 - P_0, \\quad \\textcolor{#00FF00}{\\vec{v}_2} = P_2 - P_0", // Step 2
+        "\\textcolor{#FF0000}{\\vec{N}_{face}} = \\textcolor{#FFFF00}{\\vec{v}_1} \\times \\textcolor{#00FF00}{\\vec{v}_2}", // Step 3
+        "\\textcolor{#FF0000}{\\vec{N}_{face\\_i}} = \\vec{v}_{1\\_i} \\times \\vec{v}_{2\\_i}", // Step 4
+        "\\text{Gather } \\textcolor{#FF0000}{\\vec{N}_{face}} \\text{ around } P_{vertex}", // Step 5
+        "\\textcolor{#9B59B6}{\\vec{N}_{sum}} = \\sum_{i=0}^{3} \\textcolor{#FF0000}{\\vec{N}_{face\\_i}}", // Step 6
+        "\\textcolor{#00FFFF}{\\vec{N}_{vertex}} = \\frac{\\textcolor{#9B59B6}{\\vec{N}_{sum}}}{|\\textcolor{#9B59B6}{\\vec{N}_{sum}}|}" // Step 7
+    ];
+
+    const mathOverlay = document.getElementById('math-formula');
+
+    function updateMathFormula(step) {
+        if (step === 0) {
+            mathOverlay.style.display = 'none';
+        } else {
+            mathOverlay.style.display = 'block';
+            katex.render(mathFormulas[step], mathOverlay, { throwOnError: false });
         }
+    }
 
-        // Điểm đánh dấu đỉnh trên cùng (Top Vertex)
-        const dotGeo = new THREE.SphereGeometry(0.08, 16, 16);
-        const dotMat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF });
-        const centerDot = new THREE.Mesh(dotGeo, dotMat);
-        centerDot.position.copy(centerPt);
-        scene.add(centerDot);
+    // ==========================================
+    // 5. CÁC HÀM TWEEN ANIMATION
+    // ==========================================
+    function createTweenPromise(tween) {
+        return new Promise(resolve => { tween.onComplete(resolve).onStop(resolve).start(); });
+    }
 
-        // ==========================================
-        // 3. TOÁN HỌC & KHỞI TẠO VECTORS TRƯỚC
-        // ==========================================
-        function createArrow(origin, dir, length, colorHex) {
-            const arrow = new THREE.ArrowHelper(dir.clone().normalize(), origin, length, colorHex, 0.2, 0.15);
-            arrow.visible = false;
-            scene.add(arrow);
-            return arrow;
-        }
+    function tweenColor(material, targetHex, duration) {
+        const initial = new THREE.Color(material.color.getHex());
+        const target = new THREE.Color(targetHex);
+        const tween = new TWEEN.Tween(initial)
+            .to(target, duration)
+            .easing(TWEEN.Easing.Quadratic.Out)
+            .onUpdate(() => material.color.set(initial));
+        return createTweenPromise(tween);
+    }
 
-        // Lấy mặt 0 (topP, frontP, rightP) làm mẫu mô tả Pass 1
-        const v1_dir = new THREE.Vector3().subVectors(rawFaces[0][1], rawFaces[0][0]);
-        const v2_dir = new THREE.Vector3().subVectors(rawFaces[0][2], rawFaces[0][0]);
-        const v1_len = v1_dir.length();
-        const v2_len = v2_dir.length();
+    function growArrow(arrow, targetLength, duration) {
+        arrow.visible = true;
+        const tween = new TWEEN.Tween({ l: 0.01 })
+            .to({ l: targetLength }, duration)
+            .easing(TWEEN.Easing.Back.Out)
+            .onUpdate(obj => arrow.setLength(obj.l, obj.l * 0.2, obj.l * 0.15));
+        return createTweenPromise(tween);
+    }
 
-        const centroids = origPositions; 
-        const n_dirs = [];
-        for (let i = 0; i < numFaces; i++) {
-            const p0 = rawFaces[i][0];
-            const p1 = rawFaces[i][1];
-            const p2 = rawFaces[i][2];
-            const vb = new THREE.Vector3().subVectors(p1, p0);
-            const vc = new THREE.Vector3().subVectors(p2, p0);
-            const ni = new THREE.Vector3().crossVectors(vb, vc).normalize();
-            n_dirs.push(ni);
-        }
+    function shrinkArrow(arrow, duration) {
+        const currentLen = arrow.line.scale.y;
+        const tween = new TWEEN.Tween({ l: currentLen })
+            .to({ l: 0.01 }, duration)
+            .easing(TWEEN.Easing.Quadratic.In)
+            .onUpdate(obj => arrow.setLength(Math.max(obj.l, 0.01), obj.l * 0.2, obj.l * 0.15))
+            .onComplete(() => { arrow.visible = false; });
+        return createTweenPromise(tween);
+    }
 
-        // Chỉ tổng hợp vector pháp tuyến của 4 MẶT TRÊN cùng (Vì chúng chạm đỉnh TopP)
-        const sum_vec = new THREE.Vector3();
-        for(let i=0; i<4; i++) {
-            sum_vec.add(n_dirs[i]);
-        }
-        const sum_len = sum_vec.length();
+    function moveArrowOrigin(arrow, targetOrigin, duration) {
+        const tween = new TWEEN.Tween(arrow.position)
+            .to({ x: targetOrigin.x, y: targetOrigin.y, z: targetOrigin.z }, duration)
+            .easing(TWEEN.Easing.Cubic.InOut);
+        return createTweenPromise(tween);
+    }
 
-        const arr1 = createArrow(centerPt, v1_dir, v1_len, COLOR_V1);
-        const arr2 = createArrow(centerPt, v2_dir, v2_len, COLOR_V2);
-        
-        const normalArrows = [];
-        for (let i = 0; i < numFaces; i++) {
-            normalArrows.push(createArrow(centroids[i], n_dirs[i], 1.5, COLOR_FACE_NORMAL));
-        }
-        
-        const sumArrow = createArrow(centerPt, sum_vec, sum_len, COLOR_SUM);
+    function moveAndRotateGroup(group, targetPos, targetQuat, duration) {
+        const posTween = new TWEEN.Tween(group.position)
+            .to({ x: targetPos.x, y: targetPos.y, z: targetPos.z }, duration)
+            .easing(TWEEN.Easing.Cubic.InOut);
 
-        // ==========================================
-        // 4. CÁC HÀM TWEEN ANIMATION
-        // ==========================================
-        function createTweenPromise(tween) {
-            return new Promise(resolve => { tween.onComplete(resolve).onStop(resolve).start(); });
-        }
+        const qStart = group.quaternion.clone();
+        const qTween = new TWEEN.Tween({ t: 0 })
+            .to({ t: 1 }, duration)
+            .easing(TWEEN.Easing.Cubic.InOut)
+            .onUpdate((obj) => { group.quaternion.slerpQuaternions(qStart, targetQuat, obj.t); });
 
-        function tweenColor(material, targetHex, duration) {
-            const initial = new THREE.Color(material.color.getHex());
-            const target = new THREE.Color(targetHex);
-            const tween = new TWEEN.Tween(initial)
-                .to(target, duration)
-                .easing(TWEEN.Easing.Quadratic.Out)
-                .onUpdate(() => material.color.set(initial));
-            return createTweenPromise(tween);
-        }
+        return Promise.all([createTweenPromise(posTween), createTweenPromise(qTween)]);
+    }
 
-        function growArrow(arrow, targetLength, duration) {
-            arrow.visible = true;
-            const tween = new TWEEN.Tween({ l: 0.01 })
-                .to({ l: targetLength }, duration)
-                .easing(TWEEN.Easing.Back.Out)
-                .onUpdate(obj => arrow.setLength(obj.l, obj.l * 0.2, obj.l * 0.15));
-            return createTweenPromise(tween);
-        }
+    // ==========================================
+    // 6. STATE MACHINE
+    // ==========================================
+    const MAX_STEPS = 7;
+    window.currentStep = 0;
+    let isAnimating = false;
 
-        function shrinkArrow(arrow, duration) {
-            const currentLen = arrow.line.scale.y; 
-            const tween = new TWEEN.Tween({ l: currentLen })
-                .to({ l: 0.01 }, duration)
-                .easing(TWEEN.Easing.Quadratic.In)
-                .onUpdate(obj => arrow.setLength(Math.max(obj.l, 0.01), obj.l * 0.2, obj.l * 0.15))
-                .onComplete(() => { arrow.visible = false; });
-            return createTweenPromise(tween);
-        }
+    function snapToStep(step) {
+        updateMathFormula(step);
 
-        function moveArrowOrigin(arrow, targetOrigin, duration) {
-            const tween = new TWEEN.Tween(arrow.position)
-                .to({ x: targetOrigin.x, y: targetOrigin.y, z: targetOrigin.z }, duration)
-                .easing(TWEEN.Easing.Cubic.InOut);
-            return createTweenPromise(tween);
-        }
+        faces.forEach(f => f.material.color.setHex(COLOR_DEFAULT));
+        centerDot.material.color.setHex(0xFFFFFF);
+        centerDot.visible = (step !== 1);
 
-        function moveAndRotateGroup(group, targetPos, targetQuat, duration) {
-            const posTween = new TWEEN.Tween(group.position)
-                .to({ x: targetPos.x, y: targetPos.y, z: targetPos.z }, duration)
-                .easing(TWEEN.Easing.Cubic.InOut);
-            
-            const qStart = group.quaternion.clone();
-            const qTween = new TWEEN.Tween({ t: 0 })
-                .to({ t: 1 }, duration)
-                .easing(TWEEN.Easing.Cubic.InOut)
-                .onUpdate((obj) => { group.quaternion.slerpQuaternions(qStart, targetQuat, obj.t); });
-            
-            return Promise.all([createTweenPromise(posTween), createTweenPromise(qTween)]);
-        }
+        arr1.visible = false; arr1.setLength(v1_len, v1_len * 0.2, v1_len * 0.15);
+        arr2.visible = false; arr2.setLength(v2_len, v2_len * 0.2, v2_len * 0.15);
 
-        // ==========================================
-        // 5. STATE MACHINE
-        // ==========================================
-        const MAX_STEPS = 7; 
-        let currentStep = 0;
-        let isAnimating = false;
+        normalArrows.forEach((arr, i) => {
+            arr.visible = false;
+            arr.position.copy(centroids[i]);
+            arr.setLength(1.5, 0.3, 0.2);
+        });
 
-        function snapToStep(step) {
-            faces.forEach(f => f.material.color.setHex(COLOR_DEFAULT));
-            centerDot.material.color.setHex(0xFFFFFF);
-            centerDot.visible = (step !== 1); 
+        sumArrow.visible = false;
+        sumArrow.setLength(sum_len, sum_len * 0.2, sum_len * 0.15);
+        sumArrow.setColor(COLOR_SUM);
 
-            arr1.visible = false; arr1.setLength(v1_len, v1_len * 0.2, v1_len * 0.15);
-            arr2.visible = false; arr2.setLength(v2_len, v2_len * 0.2, v2_len * 0.15);
-            
-            normalArrows.forEach((arr, i) => {
-                arr.visible = false;
-                arr.position.copy(centroids[i]);
-                arr.setLength(1.5, 0.3, 0.2);
-            });
-            
-            sumArrow.visible = false;
-            sumArrow.setLength(sum_len, sum_len * 0.2, sum_len * 0.15);
-            sumArrow.setColor(COLOR_SUM);
-
-            for(let i = 0; i < numFaces; i++) {
-                if (step === 1) { 
-                    faceGroups[i].position.copy(listPositions[i]);
-                    faceGroups[i].quaternion.copy(listQuaternions[i]);
-                } else { 
-                    faceGroups[i].position.copy(origPositions[i]);
-                    faceGroups[i].quaternion.copy(origQuaternions[i]);
-                }
-            }
-
-            if (step >= 2) {
-                faces[0].material.color.setHex(COLOR_HIGHLIGHT);
-                arr1.visible = true; arr2.visible = true;
-            }
-            if (step >= 3) {
-                faces[0].material.color.setHex(COLOR_DEFAULT);
-                arr1.visible = false; arr2.visible = false;
-                normalArrows[0].visible = true;
-            }
-            if (step >= 4) {
-                faces.forEach(f => f.material.color.setHex(COLOR_HIGHLIGHT));
-                normalArrows.forEach(arr => arr.visible = true);
-            }
-            if (step >= 5) {
-                faces.forEach(f => f.material.color.setHex(COLOR_DEFAULT));
-                // Chỉ dồn 4 pháp tuyến kề trên về Đỉnh, ẩn 4 mặt dưới vì không chạm
-                for(let i=0; i<4; i++) {
-                    normalArrows[i].position.copy(centerPt);
-                    normalArrows[i].visible = true;
-                }
-                for(let i=4; i<8; i++) normalArrows[i].visible = false;
-            }
-            if (step >= 6) {
-                normalArrows.forEach(arr => arr.visible = false);
-                sumArrow.visible = true;
-            }
-            if (step >= 7) {
-                sumArrow.setLength(1.8, 1.8 * 0.2, 1.8 * 0.15); 
-                sumArrow.setColor(COLOR_VERTEX_NORMAL);
-                centerDot.material.color.setHex(COLOR_VERTEX_NORMAL);
-            }
-        }
-
-        async function animateTransition(toStep) {
-            if (toStep === 1) { 
-                centerDot.visible = false;
-                const promises = [];
-                for(let i=0; i<numFaces; i++) promises.push(moveAndRotateGroup(faceGroups[i], listPositions[i], listQuaternions[i], 1200));
-                await Promise.all(promises);
-            }
-            else if (toStep === 2) { 
-                const promises = [];
-                for(let i=0; i<numFaces; i++) promises.push(moveAndRotateGroup(faceGroups[i], origPositions[i], origQuaternions[i], 1200));
-                await Promise.all(promises);
-                
-                centerDot.visible = true;
-                arr1.visible = true; arr2.visible = true;
-                arr1.setLength(0.01, 0, 0); arr2.setLength(0.01, 0, 0);
-                await Promise.all([
-                    tweenColor(faces[0].material, COLOR_HIGHLIGHT, 500),
-                    growArrow(arr1, v1_len, 800), growArrow(arr2, v2_len, 800)
-                ]);
-            }
-            else if (toStep === 3) { 
-                normalArrows[0].visible = true; normalArrows[0].setLength(0.01, 0, 0);
-                await Promise.all([
-                    growArrow(normalArrows[0], 1.5, 800),
-                    shrinkArrow(arr1, 400), shrinkArrow(arr2, 400),
-                    tweenColor(faces[0].material, COLOR_DEFAULT, 400)
-                ]);
-            }
-            else if (toStep === 4) { 
-                const promises = faces.map(f => tweenColor(f.material, COLOR_HIGHLIGHT, 400));
-                for(let i = 1; i < numFaces; i++) {
-                    normalArrows[i].visible = true; normalArrows[i].setLength(0.01, 0, 0);
-                    promises.push(growArrow(normalArrows[i], 1.5, 600));
-                }
-                await Promise.all(promises);
-            }
-            else if (toStep === 5) { 
-                const promises = faces.map(f => tweenColor(f.material, COLOR_DEFAULT, 400));
-                // Move 4 mặt nửa trên về điểm chung
-                for(let i=0; i<4; i++) promises.push(moveArrowOrigin(normalArrows[i], centerPt, 800));
-                // Tự động triệt tiêu (Shrink) 4 mặt dưới vì không chung Đỉnh
-                for(let i=4; i<8; i++) promises.push(shrinkArrow(normalArrows[i], 500));
-                await Promise.all(promises);
-            }
-            else if (toStep === 6) { 
-                const promises = [];
-                for(let i=0; i<4; i++) promises.push(shrinkArrow(normalArrows[i], 500));
-                sumArrow.visible = true; sumArrow.setLength(0.01, 0, 0);
-                promises.push(growArrow(sumArrow, sum_len, 800));
-                await Promise.all(promises);
-            }
-            else if (toStep === 7) { 
-                const promises = [];
-                const lenTween = new TWEEN.Tween({ l: sum_len })
-                    .to({ l: 1.8 }, 800).easing(TWEEN.Easing.Quadratic.InOut)
-                    .onUpdate(obj => sumArrow.setLength(obj.l, obj.l * 0.2, obj.l * 0.15));
-                promises.push(createTweenPromise(lenTween));
-                
-                const initialCol = new THREE.Color(COLOR_SUM);
-                const targetCol = new THREE.Color(COLOR_VERTEX_NORMAL);
-                const colTween = new TWEEN.Tween(initialCol).to(targetCol, 800).onUpdate(() => sumArrow.setColor(initialCol));
-                promises.push(createTweenPromise(colTween));
-                
-                promises.push(tweenColor(centerDot.material, COLOR_VERTEX_NORMAL, 800));
-                await Promise.all(promises);
-            }
-        }
-
-        async function goToStep(step) {
-            step = Math.max(0, Math.min(step, MAX_STEPS));
-            if (step === currentStep && !isAnimating) return;
-
-            TWEEN.removeAll();
-
-            if (step < currentStep) {
-                currentStep = step; snapToStep(currentStep); isAnimating = false;
+        for(let i = 0; i < numFaces; i++) {
+            if (step === 1) {
+                faceGroups[i].position.copy(listPositions[i]);
+                faceGroups[i].quaternion.copy(listQuaternions[i]);
             } else {
-                if (isAnimating) { snapToStep(currentStep); isAnimating = false; return; }
-                isAnimating = true; snapToStep(currentStep); currentStep = step;
-                await animateTransition(currentStep); isAnimating = false;
+                faceGroups[i].position.copy(origPositions[i]);
+                faceGroups[i].quaternion.copy(origQuaternions[i]);
             }
         }
 
-        // ==========================================
-        // 6. XỬ LÝ SỰ KIỆN CLICK (POWERPOINT CONTROLS)
-        // ==========================================
-        let startX, startY;
-
-        document.addEventListener('contextmenu', e => e.preventDefault());
-        document.addEventListener('pointerdown', (e) => { startX = e.clientX; startY = e.clientY; });
-        document.addEventListener('pointerup', (e) => {
-            const dx = e.clientX - startX; const dy = e.clientY - startY;
-            if (Math.sqrt(dx * dx + dy * dy) < 5) {
-                if (e.button === 0) goToStep(currentStep + 1);
-                else if (e.button === 2) goToStep(currentStep - 1);
-            }
-        });
-
-        // ==========================================
-        // 7. RENDER LOOP
-        // ==========================================
-        snapToStep(0); 
-
-        function animate(time) {
-            requestAnimationFrame(animate);
-            TWEEN.update(time);
-            controls.update();
-            scene.rotation.y += 0.001;
-            renderer.render(scene, camera);
+        if (step >= 2) {
+            faces[0].material.color.setHex(COLOR_HIGHLIGHT);
+            arr1.visible = true; arr2.visible = true;
         }
+        if (step >= 3) {
+            faces[0].material.color.setHex(COLOR_DEFAULT);
+            arr1.visible = false; arr2.visible = false;
+            normalArrows[0].visible = true;
+        }
+        if (step >= 4) {
+            faces.forEach(f => f.material.color.setHex(COLOR_HIGHLIGHT));
+            normalArrows.forEach(arr => arr.visible = true);
+        }
+        if (step >= 5) {
+            faces.forEach(f => f.material.color.setHex(COLOR_DEFAULT));
+            for(let i=0; i<4; i++) {
+                normalArrows[i].position.copy(centerPt);
+                normalArrows[i].visible = true;
+            }
+            for(let i=4; i<8; i++) normalArrows[i].visible = false;
+        }
+        if (step >= 6) {
+            normalArrows.forEach(arr => arr.visible = false);
+            sumArrow.visible = true;
+        }
+        if (step >= 7) {
+            sumArrow.setLength(1.8, 1.8 * 0.2, 1.8 * 0.15);
+            sumArrow.setColor(COLOR_VERTEX_NORMAL);
+            centerDot.material.color.setHex(COLOR_VERTEX_NORMAL);
+        }
+    }
 
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
+    async function animateTransition(toStep) {
+        updateMathFormula(toStep);
 
-        animate();
-    </script>
+        if (toStep === 1) {
+            centerDot.visible = false;
+            const promises = [];
+            for(let i=0; i<numFaces; i++) promises.push(moveAndRotateGroup(faceGroups[i], listPositions[i], listQuaternions[i], 1200));
+            await Promise.all(promises);
+        }
+        else if (toStep === 2) {
+            const promises = [];
+            for(let i=0; i<numFaces; i++) promises.push(moveAndRotateGroup(faceGroups[i], origPositions[i], origQuaternions[i], 1200));
+            await Promise.all(promises);
+
+            centerDot.visible = true;
+            arr1.visible = true; arr2.visible = true;
+            arr1.setLength(0.01, 0, 0); arr2.setLength(0.01, 0, 0);
+            await Promise.all([
+                tweenColor(faces[0].material, COLOR_HIGHLIGHT, 500),
+                growArrow(arr1, v1_len, 800), growArrow(arr2, v2_len, 800)
+            ]);
+        }
+        else if (toStep === 3) {
+            normalArrows[0].visible = true; normalArrows[0].setLength(0.01, 0, 0);
+            await Promise.all([
+                growArrow(normalArrows[0], 1.5, 800),
+                shrinkArrow(arr1, 400), shrinkArrow(arr2, 400),
+                tweenColor(faces[0].material, COLOR_DEFAULT, 400)
+            ]);
+        }
+        else if (toStep === 4) {
+            const promises = faces.map(f => tweenColor(f.material, COLOR_HIGHLIGHT, 400));
+            for(let i = 1; i < numFaces; i++) {
+                normalArrows[i].visible = true; normalArrows[i].setLength(0.01, 0, 0);
+                promises.push(growArrow(normalArrows[i], 1.5, 600));
+            }
+            await Promise.all(promises);
+        }
+        else if (toStep === 5) {
+            const promises = faces.map(f => tweenColor(f.material, COLOR_DEFAULT, 400));
+            for(let i=0; i<4; i++) promises.push(moveArrowOrigin(normalArrows[i], centerPt, 800));
+            for(let i=4; i<8; i++) promises.push(shrinkArrow(normalArrows[i], 500));
+            await Promise.all(promises);
+        }
+        else if (toStep === 6) {
+            const promises = [];
+            for(let i=0; i<4; i++) promises.push(shrinkArrow(normalArrows[i], 500));
+            sumArrow.visible = true; sumArrow.setLength(0.01, 0, 0);
+            promises.push(growArrow(sumArrow, sum_len, 800));
+            await Promise.all(promises);
+        }
+        else if (toStep === 7) {
+            const promises = [];
+            const lenTween = new TWEEN.Tween({ l: sum_len })
+                .to({ l: 1.8 }, 800).easing(TWEEN.Easing.Quadratic.InOut)
+                .onUpdate(obj => sumArrow.setLength(obj.l, obj.l * 0.2, obj.l * 0.15));
+            promises.push(createTweenPromise(lenTween));
+
+            const initialCol = new THREE.Color(COLOR_SUM);
+            const targetCol = new THREE.Color(COLOR_VERTEX_NORMAL);
+            const colTween = new TWEEN.Tween(initialCol).to(targetCol, 800).onUpdate(() => sumArrow.setColor(initialCol));
+            promises.push(createTweenPromise(colTween));
+
+            promises.push(tweenColor(centerDot.material, COLOR_VERTEX_NORMAL, 800));
+            await Promise.all(promises);
+        }
+    }
+
+    async function goToStep(step) {
+        step = Math.max(0, Math.min(step, MAX_STEPS));
+        if (step === window.currentStep && !isAnimating) return;
+
+        TWEEN.removeAll();
+
+        if (step < window.currentStep) {
+            window.currentStep = step; snapToStep(window.currentStep); isAnimating = false;
+        } else {
+            if (isAnimating) { snapToStep(window.currentStep); isAnimating = false; return; }
+            isAnimating = true; snapToStep(window.currentStep); window.currentStep = step;
+            await animateTransition(window.currentStep); isAnimating = false;
+        }
+    }
+
+    // ==========================================
+    // 7. XỬ LÝ SỰ KIỆN CLICK (POWERPOINT CONTROLS)
+    // ==========================================
+    let startX, startY;
+
+    document.addEventListener('contextmenu', e => e.preventDefault());
+    document.addEventListener('pointerdown', (e) => { startX = e.clientX; startY = e.clientY; });
+    document.addEventListener('pointerup', (e) => {
+        const dx = e.clientX - startX; const dy = e.clientY - startY;
+        if (Math.sqrt(dx * dx + dy * dy) < 5) {
+            if (e.button === 0) goToStep(window.currentStep + 1);
+            else if (e.button === 2) goToStep(window.currentStep - 1);
+        }
+    });
+
+    // ==========================================
+    // 8. RENDER LOOP
+    // ==========================================
+    snapToStep(0);
+
+    function animate(time) {
+        requestAnimationFrame(animate);
+        TWEEN.update(time);
+        controls.update();
+        scene.rotation.y += 0.001;
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+</script>
 </body>
-</html>
+</html> 
