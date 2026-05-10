@@ -6,7 +6,7 @@ project(OptimizeSDF LANGUAGES C CXX CUDA)
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS}")
 set(CMAKE_CUDA_STANDARD 20)
 set(CMAKE_CXX_STANDARD 20)
-
+find_package(OpenCL REQUIRED)
 include(FetchContent)
 FetchContent_Declare(
         polyscope
@@ -26,27 +26,28 @@ add_executable(OptimizeSDF
         Core/MatrixMemoryManager.cuh
         Core/MatrixUtils.cuh
         Core/ClipSpaceConversion.hpp
-        Core/mathHelper.cu
+        Core/MathHelper.cu
         Core/Model.cu
         Core/Model.cuh
         Core/ModelHelper.cu
-        NormalSDFOptix/SDFMain.cpp
+        Core/Helper.hpp
+        bin/Optix/interface.cpp
 )
-add_library(OptixShaders OBJECT NormalSDFOptix/SDFOptix.cu)
+add_library(OptixShaders OBJECT bin/Optix/SDFOptix.cu)
 
 # 2. Bật cờ PTX Compilation: Báo cho NVCC biết chỉ dịch ra PTX rồi dừng lại
 set_property(TARGET OptixShaders PROPERTY CUDA_PTX_COMPILATION ON)
 
 # 3. Đảm bảo Shader này đọc được các file header của OptiX và thư mục Core
 target_include_directories(OptixShaders PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/OptiX
+        OptiX
         ${CMAKE_CURRENT_SOURCE_DIR}/Core
 )
 
 # 4. Bắt buộc project chính phải đợi file PTX compile xong mới được buildc
 add_dependencies(OptimizeSDF OptixShaders)
 # 1. Chỉ định thư mục Include cho OptiX
-target_include_directories(OptimizeSDF PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/OptiX)
+target_include_directories(OptimizeSDF PRIVATE OptiX)
 
 # 2. BẬT Tính năng CUDA Separable Compilation và Architecture
 # - CUDA_SEPARABLE_COMPILATION: Bắt buộc để link các hàm device giữa các file .cu
@@ -61,9 +62,11 @@ target_link_libraries(OptimizeSDF
         PRIVATE
         cublas
         polyscope
+        OpenCL::OpenCL
 )
 
 # ==============================================================================
 # BƯỚC 3: CÁC THAO TÁC KHÁC
 # ==============================================================================
 file(COPY "Model" DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+file(COPY "bin/OpenCL/kernel.cl" DESTINATION ${CMAKE_CURRENT_BINARY_DIR})

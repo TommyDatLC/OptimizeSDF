@@ -2,7 +2,7 @@
 #define CLIPPING_SPACE
 
 #include "MatrixMemoryManager.cuh"
-#include "mathHelper.cu"
+#include "MathHelper.cu"
 struct TransformData {
     float3 Translate;
     float3 Rotation; // Giả định là Euler angles (Pitch, Yaw, Roll) theo Radian

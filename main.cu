@@ -1,5 +1,6 @@
 #include "Core/MatrixMemoryManager.cuh"
-#include "NormalSDFOptix/SDFMain.cpp"
+#include "bin/Optix/interface.cpp"
+#include "bin/OpenCL/interface.cpp"
 #include <iostream>
 #include <cuda.h>
 #include <cublas_v2.h>
@@ -26,12 +27,13 @@ int main() {
         std::cerr << "Lỗi: Không tìm thấy thư mục '" << folderPath << "'\n";
         return 1;
     }
-
+    std::string optixPTX = readFile("CMakeFiles/OptixShaders.dir/bin/Optix/SDFOptix.ptx");
+    std::string OpenCLShader = readFile("kernel.cl");
     std::cout << "Bắt đầu quét thư mục: " << folderPath << "\n";
 
     // Cờ điều khiển việc có mở UI 3D hay không
     bool hien_thi_3d = true;
-
+    auto clEnv = InitOpenCLEnvironment(OpenCLShader);
     // Lặp qua tất cả các file trong thư mục
     for (const auto& entry : fs::directory_iterator(folderPath)) {
 
@@ -51,8 +53,8 @@ int main() {
             //model.AddToScene();
 
             // 3. Chạy thuật toán tính SDF
-            CaculatingSDFUsingOptix(model);
-
+            CaculatingSDFUsingOptix(model,optixPTX);
+            //CalculatingSDFUsingOpenCL(clEnv,model);
             // (Tuỳ chọn) NẾU BẠN CÓ HÀM LƯU FILE SDF, HÃY GỌI Ở ĐÂY
             // Lấy tên file gốc đổi đuôi .obj thành .sdf
             // std::string outputPath = entry.path().replace_extension(".sdf").string();
@@ -72,6 +74,6 @@ int main() {
 
     std::cout << "==================================================\n";
     std::cout << "Đã hoàn tất xử lý tất cả các file!\n";
-
+    ReleaseOpenCLEnvironment(clEnv);
     return 0;
 }

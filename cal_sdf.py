@@ -21,9 +21,9 @@ def process_mesh(obj_file, hien_thi_3d=True):
     start_time = time.perf_counter()
     
     # Compute the Shape Diameter Function (SDF)
-    # ĐỒNG BỘ: Chỉnh cone_amplitude về 120 độ để khớp với C++ OptiX
-    ms.apply_filter('compute_scalar_by_shape_diameter_function_per_vertex', 
-                    cone_amplitude = 150)
+    ms.apply_filter('compute_scalar_by_shape_diameter_function_per_vertex_gpu', 
+                coneangle = 150.0, # Thêm .0 để ép kiểu float
+                numberrays = 128)
                     
     # Kết thúc đo thời gian chạy
     end_time = time.perf_counter()

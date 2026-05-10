@@ -1,0 +1,474 @@
+/home/datdau/CUDA/OptimizeSDF/cmake-build-debug/OptimizeSDF
+
+[polyscope] Backend: openGL3_glfw -- Loaded openGL version: 3.3.0 NVIDIA 570.195.03
+
+Bắt đầu quét thư mục: Model
+
+[HỆ THỐNG] Đang khởi tạo môi trường OpenCL...
+
+==================================================
+
+Đang xử lý: Model/400.obj
+
+Đọc thành công file: Model/400.obj (3703 đỉnh)
+
+Bắt đầu tính toán SDF bằng OpenCL...
+
+[CPU] Đang tiền xử lý dữ liệu và đóng gói mảng...
+
+    + Đang xây dựng cây Octree...
+
+    + Hoàn tất Octree! Tổng số Node: 1897
+
+  -> [Phân tích] Copy RAM->VRAM & Set Args: 0.000123301 giây
+
+  -> [Phân tích] Thời gian thực thi phần cứng GPU: 0.00659238 giây
+
+Thời gian tổng cộng toàn bộ quy trình OpenCL (Nạp + Thực thi + Trả kết quả): 0.0454137 giây
+
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 0.373295
+
+==================================================
+
+Đang xử lý: Model/76.obj
+
+Đọc thành công file: Model/76.obj (5923 đỉnh)
+
+Bắt đầu tính toán SDF bằng OpenCL...
+
+[CPU] Đang tiền xử lý dữ liệu và đóng gói mảng...
+
+    + Đang xây dựng cây Octree...
+
+    + Hoàn tất Octree! Tổng số Node: 3001
+
+  -> [Phân tích] Copy RAM->VRAM & Set Args: 0.000320369 giây
+
+  -> [Phân tích] Thời gian thực thi phần cứng GPU: 0.0104582 giây
+
+Thời gian tổng cộng toàn bộ quy trình OpenCL (Nạp + Thực thi + Trả kết quả): 0.0721621 giây
+
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 0.309022
+
+==================================================
+
+Đang xử lý: Model/360.obj
+
+Đọc thành công file: Model/360.obj (2200 đỉnh)
+
+Bắt đầu tính toán SDF bằng OpenCL...
+
+[CPU] Đang tiền xử lý dữ liệu và đóng gói mảng...
+
+    + Đang xây dựng cây Octree...
+
+    + Hoàn tất Octree! Tổng số Node: 1409
+
+  -> [Phân tích] Copy RAM->VRAM & Set Args: 4.2413e-05 giây
+
+  -> [Phân tích] Thời gian thực thi phần cứng GPU: 0.00326527 giây
+
+Thời gian tổng cộng toàn bộ quy trình OpenCL (Nạp + Thực thi + Trả kết quả): 0.0240734 giây
+
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 0.0707017
+
+==================================================
+
+Đang xử lý: Model/9.obj
+
+Đọc thành công file: Model/9.obj (2639 đỉnh)
+
+Bắt đầu tính toán SDF bằng OpenCL...
+
+[CPU] Đang tiền xử lý dữ liệu và đóng gói mảng...
+
+    + Đang xây dựng cây Octree...
+
+    + Hoàn tất Octree! Tổng số Node: 1241
+
+  -> [Phân tích] Copy RAM->VRAM & Set Args: 7.1621e-05 giây
+
+  -> [Phân tích] Thời gian thực thi phần cứng GPU: 0.00461758 giây
+
+Thời gian tổng cộng toàn bộ quy trình OpenCL (Nạp + Thực thi + Trả kết quả): 0.0293701 giây
+
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 0.245519
+
+==================================================
+
+Đang xử lý: Model/Leaf.obj
+
+Đọc thành công file: Model/Leaf.obj (24866 đỉnh)
+
+Bắt đầu tính toán SDF bằng OpenCL...
+
+[CPU] Đang tiền xử lý dữ liệu và đóng gói mảng...
+
+    + Đang xây dựng cây Octree...
+
+    + Hoàn tất Octree! Tổng số Node: 15633
+
+  -> [Phân tích] Copy RAM->VRAM & Set Args: 0.00203102 giây
+
+  -> [Phân tích] Thời gian thực thi phần cứng GPU: 0.0266445 giây
+
+Thời gian tổng cộng toàn bộ quy trình OpenCL (Nạp + Thực thi + Trả kết quả): 0.377535 giây
+
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 1.93318
+
+==================================================
+
+Đang xử lý: Model/Earth.obj
+
+Đọc thành công file: Model/Earth.obj (952 đỉnh)
+
+Bắt đầu tính toán SDF bằng OpenCL...
+
+[CPU] Đang tiền xử lý dữ liệu và đóng gói mảng...
+
+    + Đang xây dựng cây Octree...
+
+    + Hoàn tất Octree! Tổng số Node: 481
+
+  -> [Phân tích] Copy RAM->VRAM & Set Args: 2.5656e-05 giây
+
+  -> [Phân tích] Thời gian thực thi phần cứng GPU: 0.00157802 giây
+
+Thời gian tổng cộng toàn bộ quy trình OpenCL (Nạp + Thực thi + Trả kết quả): 0.0078145 giây
+
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 1.66758
+
+==================================================
+
+Đang xử lý: Model/Crate.obj
+
+Đọc thành công file: Model/Crate.obj (386 đỉnh)
+
+Bắt đầu tính toán SDF bằng OpenCL...
+
+[CPU] Đang tiền xử lý dữ liệu và đóng gói mảng...
+
+    + Đang xây dựng cây Octree...
+
+    + Hoàn tất Octree! Tổng số Node: 73
+
+  -> [Phân tích] Copy RAM->VRAM & Set Args: 1.2999e-05 giây
+
+  -> [Phân tích] Thời gian thực thi phần cứng GPU: 0.000798588 giây
+
+Thời gian tổng cộng toàn bộ quy trình OpenCL (Nạp + Thực thi + Trả kết quả): 0.00258517 giây
+
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 2.53269
+
+==================================================
+
+Đang xử lý: Model/371.obj
+
+Đọc thành công file: Model/371.obj (14599 đỉnh)
+
+Bắt đầu tính toán SDF bằng OpenCL...
+
+[CPU] Đang tiền xử lý dữ liệu và đóng gói mảng...
+
+    + Đang xây dựng cây Octree...
+
+    + Hoàn tất Octree! Tổng số Node: 7537
+
+  -> [Phân tích] Copy RAM->VRAM & Set Args: 0.00101248 giây
+
+  -> [Phân tích] Thời gian thực thi phần cứng GPU: 0.0431707 giây
+
+Thời gian tổng cộng toàn bộ quy trình OpenCL (Nạp + Thực thi + Trả kết quả): 0.192176 giây
+
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 0.979831
+
+==================================================
+
+Đang xử lý: Model/158.obj
+
+Đọc thành công file: Model/158.obj (14587 đỉnh)
+
+Bắt đầu tính toán SDF bằng OpenCL...
+
+[CPU] Đang tiền xử lý dữ liệu và đóng gói mảng...
+
+    + Đang xây dựng cây Octree...
+
+    + Hoàn tất Octree! Tổng số Node: 5673
+
+  -> [Phân tích] Copy RAM->VRAM & Set Args: 0.00043675 giây
+
+  -> [Phân tích] Thời gian thực thi phần cứng GPU: 0.0262224 giây
+
+Thời gian tổng cộng toàn bộ quy trình OpenCL (Nạp + Thực thi + Trả kết quả): 0.157231 giây
+
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 0.196698
+
+==================================================
+
+Đang xử lý: Model/369.obj
+
+Đọc thành công file: Model/369.obj (13606 đỉnh)
+
+Bắt đầu tính toán SDF bằng OpenCL...
+
+[CPU] Đang tiền xử lý dữ liệu và đóng gói mảng...
+
+    + Đang xây dựng cây Octree...
+
+    + Hoàn tất Octree! Tổng số Node: 7137
+
+  -> [Phân tích] Copy RAM->VRAM & Set Args: 0.0004637 giây
+
+  -> [Phân tích] Thời gian thực thi phần cứng GPU: 0.0363099 giây
+
+Thời gian tổng cộng toàn bộ quy trình OpenCL (Nạp + Thực thi + Trả kết quả): 0.174633 giây
+
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 1.00344
+
+==================================================
+
+Đang xử lý: Model/118.obj
+
+Đọc thành công file: Model/118.obj (9153 đỉnh)
+
+Bắt đầu tính toán SDF bằng OpenCL...
+
+[CPU] Đang tiền xử lý dữ liệu và đóng gói mảng...
+
+    + Đang xây dựng cây Octree...
+
+    + Hoàn tất Octree! Tổng số Node: 3825
+
+  -> [Phân tích] Copy RAM->VRAM & Set Args: 0.000200953 giây
+
+  -> [Phân tích] Thời gian thực thi phần cứng GPU: 0.0189423 giây
+
+Thời gian tổng cộng toàn bộ quy trình OpenCL (Nạp + Thực thi + Trả kết quả): 0.102064 giây
+
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 0.236655
+
+==================================================
+
+Đang xử lý: Model/181.obj
+
+Đọc thành công file: Model/181.obj (7242 đỉnh)
+
+Bắt đầu tính toán SDF bằng OpenCL...
+
+[CPU] Đang tiền xử lý dữ liệu và đóng gói mảng...
+
+    + Đang xây dựng cây Octree...
+
+    + Hoàn tất Octree! Tổng số Node: 4353
+
+  -> [Phân tích] Copy RAM->VRAM & Set Args: 0.000164998 giây
+
+  -> [Phân tích] Thời gian thực thi phần cứng GPU: 0.0146348 giây
+
+Thời gian tổng cộng toàn bộ quy trình OpenCL (Nạp + Thực thi + Trả kết quả): 0.0881151 giây
+
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 0.445581
+
+==================================================
+
+Đang xử lý: Model/xyzrgb_dragon.obj
+
+Đọc thành công file: Model/xyzrgb_dragon.obj (500079 đỉnh)
+
+Bắt đầu tính toán SDF bằng OpenCL...
+
+[CPU] Đang tiền xử lý dữ liệu và đóng gói mảng...
+
+    + Đang xây dựng cây Octree...
+
+    + Hoàn tất Octree! Tổng số Node: 285273
+
+  -> [Phân tích] Copy RAM->VRAM & Set Args: 0.0525505 giây
+
+  -> [Phân tích] Thời gian thực thi phần cứng GPU: 3.27587 giây
+
+Thời gian tổng cộng toàn bộ quy trình OpenCL (Nạp + Thực thi + Trả kết quả): 11.1001 giây
+
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 56.8752
+
+==================================================
+
+Đang xử lý: Model/368.obj
+
+Đọc thành công file: Model/368.obj (11202 đỉnh)
+
+Bắt đầu tính toán SDF bằng OpenCL...
+
+[CPU] Đang tiền xử lý dữ liệu và đóng gói mảng...
+
+    + Đang xây dựng cây Octree...
+
+    + Hoàn tất Octree! Tổng số Node: 6473
+
+  -> [Phân tích] Copy RAM->VRAM & Set Args: 0.000471347 giây
+
+  -> [Phân tích] Thời gian thực thi phần cứng GPU: 0.0248321 giây
+
+Thời gian tổng cộng toàn bộ quy trình OpenCL (Nạp + Thực thi + Trả kết quả): 0.142853 giây
+
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 0.936234
+
+==================================================
+
+Đang xử lý: Model/112.obj
+
+Đọc thành công file: Model/112.obj (13628 đỉnh)
+
+Bắt đầu tính toán SDF bằng OpenCL...
+
+[CPU] Đang tiền xử lý dữ liệu và đóng gói mảng...
+
+    + Đang xây dựng cây Octree...
+
+    + Hoàn tất Octree! Tổng số Node: 6529
+
+  -> [Phân tích] Copy RAM->VRAM & Set Args: 0.000260389 giây
+
+  -> [Phân tích] Thời gian thực thi phần cứng GPU: 0.0217974 giây
+
+Thời gian tổng cộng toàn bộ quy trình OpenCL (Nạp + Thực thi + Trả kết quả): 0.152905 giây
+
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 0.273541
+
+==================================================
+
+Đã hoàn tất xử lý tất cả các file!
+
+
+Process finished with exit code 0
+
+
+/home/datdau/CUDA/OptimizeSDF/cmake-build-debug/OptimizeSDF
+[polyscope] Backend: openGL3_glfw -- Loaded openGL version: 3.3.0 NVIDIA 570.195.03
+Bắt đầu quét thư mục: Model
+[HỆ THỐNG] Đang khởi tạo môi trường OpenCL...
+==================================================
+Đang xử lý: Model/400.obj
+Đọc thành công file: Model/400.obj (3703 đỉnh)
+Bắt đầu tính toán SDF bằng OptiX...
+OptiX: Đang bắn 64 tia Fibonacci/đỉnh cho 3703 đỉnh...
+Thời gian chạy OptiX: 0.0914137 giây
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 0.426625
+-> Đang mở cửa sổ Polyscope. Hãy đóng cửa sổ để chạy file tiếp theo...
+==================================================
+Đang xử lý: Model/76.obj
+Đọc thành công file: Model/76.obj (5923 đỉnh)
+Bắt đầu tính toán SDF bằng OptiX...
+OptiX: Đang bắn 64 tia Fibonacci/đỉnh cho 5923 đỉnh...
+Thời gian chạy OptiX: 0.0752293 giây
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 0.278321
+-> Đang mở cửa sổ Polyscope. Hãy đóng cửa sổ để chạy file tiếp theo...
+==================================================
+Đang xử lý: Model/360.obj
+Đọc thành công file: Model/360.obj (2200 đỉnh)
+Bắt đầu tính toán SDF bằng OptiX...
+OptiX: Đang bắn 64 tia Fibonacci/đỉnh cho 2200 đỉnh...
+Thời gian chạy OptiX: 0.0616839 giây
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 36657.6
+-> Đang mở cửa sổ Polyscope. Hãy đóng cửa sổ để chạy file tiếp theo...
+==================================================
+Đang xử lý: Model/9.obj
+Đọc thành công file: Model/9.obj (2639 đỉnh)
+Bắt đầu tính toán SDF bằng OptiX...
+OptiX: Đang bắn 64 tia Fibonacci/đỉnh cho 2639 đỉnh...
+Thời gian chạy OptiX: 0.0615456 giây
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 0.338601
+-> Đang mở cửa sổ Polyscope. Hãy đóng cửa sổ để chạy file tiếp theo...
+==================================================
+Đang xử lý: Model/Leaf.obj
+Đọc thành công file: Model/Leaf.obj (24866 đỉnh)
+Bắt đầu tính toán SDF bằng OptiX...
+OptiX: Đang bắn 64 tia Fibonacci/đỉnh cho 24866 đỉnh...
+Thời gian chạy OptiX: 0.0641874 giây
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 0.913581
+-> Đang mở cửa sổ Polyscope. Hãy đóng cửa sổ để chạy file tiếp theo...
+==================================================
+Đang xử lý: Model/Earth.obj
+Đọc thành công file: Model/Earth.obj (952 đỉnh)
+Bắt đầu tính toán SDF bằng OptiX...
+OptiX: Đang bắn 64 tia Fibonacci/đỉnh cho 952 đỉnh...
+Thời gian chạy OptiX: 0.0617626 giây
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 1.25444
+-> Đang mở cửa sổ Polyscope. Hãy đóng cửa sổ để chạy file tiếp theo...
+==================================================
+Đang xử lý: Model/Crate.obj
+Đọc thành công file: Model/Crate.obj (386 đỉnh)
+Bắt đầu tính toán SDF bằng OptiX...
+OptiX: Đang bắn 64 tia Fibonacci/đỉnh cho 386 đỉnh...
+Thời gian chạy OptiX: 0.063167 giây
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 2.30734
+-> Đang mở cửa sổ Polyscope. Hãy đóng cửa sổ để chạy file tiếp theo...
+==================================================
+Đang xử lý: Model/371.obj
+Đọc thành công file: Model/371.obj (14599 đỉnh)
+Bắt đầu tính toán SDF bằng OptiX...
+OptiX: Đang bắn 64 tia Fibonacci/đỉnh cho 14599 đỉnh...
+Thời gian chạy OptiX: 0.0623775 giây
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 0.762838
+-> Đang mở cửa sổ Polyscope. Hãy đóng cửa sổ để chạy file tiếp theo...
+==================================================
+Đang xử lý: Model/158.obj
+Đọc thành công file: Model/158.obj (14587 đỉnh)
+Bắt đầu tính toán SDF bằng OptiX...
+OptiX: Đang bắn 64 tia Fibonacci/đỉnh cho 14587 đỉnh...
+Thời gian chạy OptiX: 0.0622795 giây
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 0.180276
+-> Đang mở cửa sổ Polyscope. Hãy đóng cửa sổ để chạy file tiếp theo...
+==================================================
+Đang xử lý: Model/369.obj
+Đọc thành công file: Model/369.obj (13606 đỉnh)
+Bắt đầu tính toán SDF bằng OptiX...
+OptiX: Đang bắn 64 tia Fibonacci/đỉnh cho 13606 đỉnh...
+Thời gian chạy OptiX: 0.0631914 giây
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 0.775402
+-> Đang mở cửa sổ Polyscope. Hãy đóng cửa sổ để chạy file tiếp theo...
+==================================================
+Đang xử lý: Model/118.obj
+Đọc thành công file: Model/118.obj (9153 đỉnh)
+Bắt đầu tính toán SDF bằng OptiX...
+OptiX: Đang bắn 64 tia Fibonacci/đỉnh cho 9153 đỉnh...
+Thời gian chạy OptiX: 0.065129 giây
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 0.172275
+-> Đang mở cửa sổ Polyscope. Hãy đóng cửa sổ để chạy file tiếp theo...
+==================================================
+Đang xử lý: Model/181.obj
+Đọc thành công file: Model/181.obj (7242 đỉnh)
+Bắt đầu tính toán SDF bằng OptiX...
+OptiX: Đang bắn 64 tia Fibonacci/đỉnh cho 7242 đỉnh...
+Thời gian chạy OptiX: 0.0603521 giây
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 0.388324
+-> Đang mở cửa sổ Polyscope. Hãy đóng cửa sổ để chạy file tiếp theo...
+==================================================
+Đang xử lý: Model/xyzrgb_dragon.obj
+Đọc thành công file: Model/xyzrgb_dragon.obj (500079 đỉnh)
+Bắt đầu tính toán SDF bằng OptiX...
+OptiX: Đang bắn 64 tia Fibonacci/đỉnh cho 500079 đỉnh...
+Thời gian chạy OptiX: 0.244324 giây
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 63.449
+-> Đang mở cửa sổ Polyscope. Hãy đóng cửa sổ để chạy file tiếp theo...
+==================================================
+Đang xử lý: Model/368.obj
+Đọc thành công file: Model/368.obj (11202 đỉnh)
+Bắt đầu tính toán SDF bằng OptiX...
+OptiX: Đang bắn 64 tia Fibonacci/đỉnh cho 11202 đỉnh...
+Thời gian chạy OptiX: 0.0667297 giây
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 0.728815
+-> Đang mở cửa sổ Polyscope. Hãy đóng cửa sổ để chạy file tiếp theo...
+==================================================
+Đang xử lý: Model/112.obj
+Đọc thành công file: Model/112.obj (13628 đỉnh)
+Bắt đầu tính toán SDF bằng OptiX...
+OptiX: Đang bắn 64 tia Fibonacci/đỉnh cho 13628 đỉnh...
+Thời gian chạy OptiX: 0.0615453 giây
+Hoàn tất SDF! Khoảng cách trung bình lớn nhất: 0.197919
+-> Đang mở cửa sổ Polyscope. Hãy đóng cửa sổ để chạy file tiếp theo...
+==================================================
+Đã hoàn tất xử lý tất cả các file!
+
+Process finished with exit code 0
