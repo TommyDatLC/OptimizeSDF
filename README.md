@@ -44,5 +44,14 @@ The following table demonstrates that despite the performance differences betwee
 | **Dragon**<br>* | <img src="https://github.com/user-attachments/assets/a78a2a2f-85a8-438c-8ee6-1d61890c58ac" width="100%" alt="Optix Dragon"> | <img src="https://github.com/user-attachments/assets/5ff27ab3-062c-4525-bf3b-9c73e8c4f48c" width="100%" alt="OpenCL Dragon"> |
 | **Hand**<br>* | <img src="https://github.com/user-attachments/assets/5c8f0d48-7f77-42dc-8967-85adb96dffba" width="100%" alt="Optix Crate"> | <img src="https://github.com/user-attachments/assets/af490257-b130-43ff-bb35-60d8eff5c736" width="100%" alt="OpenCL Crate"> |
 
+## Setup and Run
 
+> ⚠️ **CAUTION: Linux Only**
+> This project is strictly designed for **Linux environments** and will not compile or run correctly on Windows or macOS.
+
+### Prerequisites
+To successfully build and execute this project, ensure the following tools are installed on your system:
+* **`g++`**: The GNU C++ compiler for building standard C++ source files.
+* **`nvcc`**: The NVIDIA CUDA Compiler toolkit, required for compiling the OptiX/CUDA components.
+* **`CLion`**: The recommended IDE to load the CMake project, resolve dependencies, and execute the builds properly.
 
