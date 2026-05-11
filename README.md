@@ -33,23 +33,6 @@ The Speed improvement:
 - **OpenCL** excels with low-poly models due to minimal overhead.
 - **OptiX** dominates high-poly scenes by leveraging hardware acceleration.
 
-# Result
-Optix
-<img width="1920" height="1080" alt="Screenshot From 2026-05-11 08-47-21" src="https://github.com/user-attachments/assets/d750ebda-e93c-40ee-9e01-39776925e52e" />
-OpenCL
-<img width="1920" height="1080" alt="Screenshot From 2026-05-11 08-55-11" src="https://github.com/user-attachments/assets/487de566-5610-4a86-9e5f-09ec145bd3f2" />
-
-
-Optix
-<img width="1920" height="1080" alt="Screenshot From 2026-05-11 08-51-35" src="https://github.com/user-attachments/assets/a78a2a2f-85a8-438c-8ee6-1d61890c58ac" />
-OpenCL
-<img width="1920" height="1080" alt="Screenshot From 2026-05-11 09-02-02" src="https://github.com/user-attachments/assets/5ff27ab3-062c-4525-bf3b-9c73e8c4f48c" />
-
-Optix
-<img width="1920" height="1080" alt="Screenshot From 2026-05-11 08-48-51" src="https://github.com/user-attachments/assets/5c8f0d48-7f77-42dc-8967-85adb96dffba" />
-OpenCL
-<img width="1920" height="1080" alt="Screenshot From 2026-05-11 08-58-24" src="https://github.com/user-attachments/assets/af490257-b130-43ff-bb35-60d8eff5c736" />
-
 
 ## 2. Visual Quality Comparison
 
