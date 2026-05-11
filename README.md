@@ -1,5 +1,5 @@
 # **Optimizing Shape Diameter Function using HPC**
-The Shape Diameter Function (SDF) is a scalar function defined on a 3D mesh surface that measures the local volume thickness (diameter) around each point, providing a pose-oblivious, informative signature for shape analysis. It calculates an average ray intersection distance, heavily used in mesh segmentation and skeletonization to identify distinct, similar components.
+The Shape Diameter Function (SDF) is a scalar function defined on a 3D mesh surface that measures the local volume thickness (diameter) around each point, providing a pose-oblivious, informative signature for shape analysis. It's used a lot in 3D Computer Vision field for data pre-processing. It calculates an average ray intersection distance, heavily used in mesh segmentation and skeletonization to identify distinct, similar components.
 
 
 In this project, we try to optimize SDF function by using CUDA C++, and compare it with the previous work: Parallelization of Shape Diameter Function Computation using
