@@ -48,8 +48,18 @@ OpenCL
 Optix
 <img width="1920" height="1080" alt="Screenshot From 2026-05-11 08-48-51" src="https://github.com/user-attachments/assets/5c8f0d48-7f77-42dc-8967-85adb96dffba" />
 OpenCL
-<img width="1920" height="1080" alt="Screenshot From 2026-05-11 08-58-01" src="https://github.com/user-attachments/assets/9246a22f-4dae-4133-9de2-03c45b323d2d" />
+<img width="1920" height="1080" alt="Screenshot From 2026-05-11 08-58-24" src="https://github.com/user-attachments/assets/af490257-b130-43ff-bb35-60d8eff5c736" />
 
+
+## 2. Visual Quality Comparison
+
+The following table demonstrates that despite the performance differences between the APIs, the visual output remains consistent across both rendering backends.
+
+| Model | NVIDIA OptiX | OpenCL |
+| :--- | :---: | :---: |
+| **Earth**<br>*(952 vertices)* | <img src="https://github.com/user-attachments/assets/d750ebda-e93c-40ee-9e01-39776925e52e" width="100%" alt="Optix Earth"> | <img src="https://github.com/user-attachments/assets/487de566-5610-4a86-9e5f-09ec145bd3f2" width="100%" alt="OpenCL Earth"> |
+| **Dragon**<br>*(500,079 vertices)* | <img src="https://github.com/user-attachments/assets/a78a2a2f-85a8-438c-8ee6-1d61890c58ac" width="100%" alt="Optix Dragon"> | <img src="https://github.com/user-attachments/assets/5ff27ab3-062c-4525-bf3b-9c73e8c4f48c" width="100%" alt="OpenCL Dragon"> |
+| **Crate**<br>*(386 vertices)* | <img src="https://github.com/user-attachments/assets/5c8f0d48-7f77-42dc-8967-85adb96dffba" width="100%" alt="Optix Crate"> | <img src="https://github.com/user-attachments/assets/af490257-b130-43ff-bb35-60d8eff5c736" width="100%" alt="OpenCL Crate"> |
 
 
 
