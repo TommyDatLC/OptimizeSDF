@@ -1,4 +1,4 @@
-## **Optimizing Shape Diameter FUnction using HPC**
+## **Optimizing Shape Diameter Function using HPC**
 The Shape Diameter Function (SDF) is a scalar function defined on a 3D mesh surface that measures the local volume thickness (diameter) around each point, providing a pose-oblivious, informative signature for shape analysis. It calculates an average ray intersection distance, heavily used in mesh segmentation and skeletonization to identify distinct, similar components.
 
 
@@ -32,3 +32,24 @@ The Speed improvement:
 ## Technical Summary
 - **OpenCL** excels with low-poly models due to minimal overhead.
 - **OptiX** dominates high-poly scenes by leveraging hardware acceleration.
+
+# Result
+Optix
+<img width="1920" height="1080" alt="Screenshot From 2026-05-11 08-47-21" src="https://github.com/user-attachments/assets/d750ebda-e93c-40ee-9e01-39776925e52e" />
+OpenCL
+<img width="1920" height="1080" alt="Screenshot From 2026-05-11 08-55-11" src="https://github.com/user-attachments/assets/487de566-5610-4a86-9e5f-09ec145bd3f2" />
+
+
+Optix
+<img width="1920" height="1080" alt="Screenshot From 2026-05-11 08-51-35" src="https://github.com/user-attachments/assets/a78a2a2f-85a8-438c-8ee6-1d61890c58ac" />
+OpenCL
+<img width="1920" height="1080" alt="Screenshot From 2026-05-11 09-02-02" src="https://github.com/user-attachments/assets/5ff27ab3-062c-4525-bf3b-9c73e8c4f48c" />
+
+Optix
+<img width="1920" height="1080" alt="Screenshot From 2026-05-11 08-48-51" src="https://github.com/user-attachments/assets/5c8f0d48-7f77-42dc-8967-85adb96dffba" />
+OpenCL
+<img width="1920" height="1080" alt="Screenshot From 2026-05-11 08-58-01" src="https://github.com/user-attachments/assets/9246a22f-4dae-4133-9de2-03c45b323d2d" />
+
+
+
+
