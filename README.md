@@ -13,9 +13,6 @@ The Speed improvement:
 
 | Model Name | Vertices | OpenCL (s) | OptiX (s) | Faster API 🏆 |
 | :--- | :---: | :---: | :---: | :--- |
-| Crate.obj | 386 | 0.00258 | 0.06316 | ⚡ OpenCL (2448%) |
-| Earth.obj | 952 | 0.00781 | 0.06176 | ⚡ OpenCL (791%) |
-| 360.obj | 2,200 | 0.02407 | 0.06168 | ⚡ OpenCL (256%) |
 | 9.obj | 2,639 | 0.02937 | 0.06154 | ⚡ OpenCL (210%) |
 | 400.obj | 3,703 | 0.04541 | 0.09141 | ⚡ OpenCL (201%) |
 | 76.obj | 5,923 | 0.07216 | 0.07522 | ⚡ OpenCL (104%) |
