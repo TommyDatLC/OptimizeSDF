@@ -1,0 +1,1 @@
+The Shape Diameter Function (SDF) is a scalar function defined on a 3D mesh surface that measures the local volume thickness (diameter) around each point, providing a pose-oblivious, informative signature for shape analysis. It calculates an average ray intersection distance, heavily used in mesh segmentation and skeletonization to identify distinct, similar components.
