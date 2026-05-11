@@ -40,7 +40,9 @@ The following table demonstrates that despite the performance differences betwee
 
 | Model | NVIDIA OptiX | OpenCL |
 | :--- | :---: | :---: |
-| **Leaft**<br>* | <img  alt="image" src="https://github.com/user-attachments/assets/9ff21a74-3bf9-4f8b-96a9-4c66c36426c9" /> | <img src="https://github.com/user-attachments/assets/487de566-5610-4a86-9e5f-09ec145bd3f2" width="100%" alt="OpenCL Earth"> |
+| **Leaft**<br>* | <img alt="Screenshot From 2026-05-11 08-47-21" src="https://github.com/user-attachments/assets/d6f3c9bc-2b6d-47df-9361-78406d5db55b" />
+ | <img alt="image" src="https://github.com/user-attachments/assets/e1fe8ca9-95c1-4d26-ab2b-53b7e776e75d" />
+ |
 | **Dragon**<br>* | <img src="https://github.com/user-attachments/assets/a78a2a2f-85a8-438c-8ee6-1d61890c58ac" width="100%" alt="Optix Dragon"> | <img src="https://github.com/user-attachments/assets/5ff27ab3-062c-4525-bf3b-9c73e8c4f48c" width="100%" alt="OpenCL Dragon"> |
 | **Hand**<br>* | <img src="https://github.com/user-attachments/assets/5c8f0d48-7f77-42dc-8967-85adb96dffba" width="100%" alt="Optix Crate"> | <img src="https://github.com/user-attachments/assets/af490257-b130-43ff-bb35-60d8eff5c736" width="100%" alt="OpenCL Crate"> |
 
