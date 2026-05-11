@@ -1,4 +1,4 @@
-## **Optimizing Shape Diameter Function using HPC**
+# **Optimizing Shape Diameter Function using HPC**
 The Shape Diameter Function (SDF) is a scalar function defined on a 3D mesh surface that measures the local volume thickness (diameter) around each point, providing a pose-oblivious, informative signature for shape analysis. It calculates an average ray intersection distance, heavily used in mesh segmentation and skeletonization to identify distinct, similar components.
 
 
@@ -9,7 +9,7 @@ The link of this work: https://old.cescg.org/CESCG-2014/papers/Kamenicky-Paralle
 
 The Speed improvement: 
 
-# Performance Benchmark: OpenCL vs. NVIDIA OptiX
+## Performance Benchmark: OpenCL vs. NVIDIA OptiX
 
 | Model Name | Vertices | OpenCL (s) | OptiX (s) | Faster API 🏆 |
 | :--- | :---: | :---: | :---: | :--- |
