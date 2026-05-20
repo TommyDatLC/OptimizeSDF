@@ -1,50 +1,43 @@
-//
-// Created by tommydatlc on 3/17/26.
-//
-
 #ifndef OPTIMIZESDF_MATRIX_H
 #define OPTIMIZESDF_MATRIX_H
-#define CUBLASAPI
 #include <cublas_api.h>
 #include <vector>
 
+template <typename T>
 class Matrix {
     friend class MatrixMemoryManager;
 private:
     bool isOwned = true;
     cublasHandle_t cublasHandle;
-    float* hostMemory = nullptr;
-    float* deviceMemory = nullptr;
+    T* hostMemory = nullptr;
+    T* deviceMemory = nullptr;
     long long totalElement = 0.0f;
     size_t totalSizeInMemory = 0;
 
-    void mul(const Matrix &A, const Matrix &B, float **device_dest);
-    float Get(int h,int w,float* mem_Region);
-    void Set(int h,int w,float value,float* mem_Region);
-    Matrix(float* deviceMemory);
+    void mul(const Matrix<T> &A, const Matrix<T> &B, T **device_dest);
+    T Get(int h,int w,T* mem_Region);
+    void Set(int h,int w,T value,T* mem_Region);
+    Matrix(T* deviceMemory);
 public:
     // Move constructor
-        Matrix() {}
-        ~Matrix();
+    Matrix() {}
+    ~Matrix();
 
-        int Height = 0,Width = 0;
-        void CopyToHost();
-        void CopyToDevice();
-        bool IsInit();
-        Matrix(int input_height, int input_width, cublasHandle_t cublas_handle_input);
-        Matrix& operator*(const Matrix &M);
-        void Print();
-        void PrintOnGPU();
-        float GetHost(int h,int w);
-        void SetHost(int h,int w,float value);
-        __device__ float GetDevice(int h, int w);
-
-        float *getDevicePtr() const;
-        void CPUTranspose();
-        void CPUInverse();
-        size_t GetSize();
-        __device__ void SetDevice(int h, int w, float value);
+    int Height = 0,Width = 0;
+    void CopyToHost();
+    void CopyToDevice();
+    bool IsInit();
+    Matrix(int input_height, int input_width, cublasHandle_t cublas_handle_input);
+    Matrix<T>& operator*(const Matrix<T> &M);
+    void Print();
+    void PrintOnGPU();
+    T GetHost(int h,int w);
+    void SetHost(int h,int w, T value);
+    T* getDevicePtr() { return deviceMemory; }
+    T* getHostPtr() { return hostMemory; }
+    void CPUInverse();
+    void CPUTranspose();
+    size_t GetSize();
 };
-inline std::vector<Matrix*> matrixList;
 
 #endif //OPTIMIZESDF_MATRIX_H

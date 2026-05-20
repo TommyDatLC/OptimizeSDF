@@ -31,9 +31,11 @@ add_executable(OptimizeSDF
         Core/Model.cuh
         Core/ModelHelper.cu
         Core/Helper.hpp
-        bin/Optix/interface.cpp
+        src/Optix/interface.cu
+        src/Compare.hpp
+        src/Optix/changeMemoryLayout.cu
 )
-add_library(OptixShaders OBJECT bin/Optix/SDFOptix.cu)
+add_library(OptixShaders OBJECT src/Optix/SDFOptix.cu)
 
 # 2. Bật cờ PTX Compilation: Báo cho NVCC biết chỉ dịch ra PTX rồi dừng lại
 set_property(TARGET OptixShaders PROPERTY CUDA_PTX_COMPILATION ON)
@@ -68,5 +70,5 @@ target_link_libraries(OptimizeSDF
 # ==============================================================================
 # BƯỚC 3: CÁC THAO TÁC KHÁC
 # ==============================================================================
-file(COPY "Model" DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
-file(COPY "bin/OpenCL/kernel.cl" DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+file(COPY "Model" DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/Debug)
+file(COPY "src/OpenCL/kernel.cl" DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/Debug)

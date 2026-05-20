@@ -23,7 +23,7 @@ Model::Model(std::string filename) {
 void Model::ReadFromObjFile(std::string filename) {
     std::ifstream file(filename);
     if (!file.is_open()) {
-        std::__throw_runtime_error("Lỗi: Không thể mở file");
+        throw std::runtime_error("Lỗi: Không thể mở file");
     }
 
     vertex.clear();
