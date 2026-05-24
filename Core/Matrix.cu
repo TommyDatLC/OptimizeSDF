@@ -60,11 +60,53 @@ void Matrix<T>::CPUInverse() {
     // Nếu bạn muốn hỗ trợ double cho GLM, hãy thêm else if constexpr ở đây với glm::dmat4
 }
 
+template <typename T>
+size_t Matrix<T>::GetSize()
+{
+    return totalSizeInMemory;
+}
+
+template <typename T>
+void Matrix<T>::CopyToHost() {
+    cudaMemcpy(hostMemory,deviceMemory,totalSizeInMemory,cudaMemcpyDeviceToHost);
+}
+template <typename T>
+void Matrix<T>::CopyToDevice() {
+    cudaMemcpy(deviceMemory,hostMemory,totalSizeInMemory,cudaMemcpyHostToDevice);
+}
 // LƯU Ý: Bạn cần lặp lại cấu trúc template <typename T> phía trên cho TẤT CẢ các hàm còn lại
 // (Print, CopyToHost, SetHost, GetHost...) trong file Matrix.cu này.
 // ... existing code ...
+template <typename T>
+void Matrix<T>::SetHost(int h, int w, T value) {
+    Set(h,w,value,hostMemory);
+}
+template <typename T>
+void Matrix<T>::SetDevice(int h, int w,T value) {
+    Set(h,w,value,deviceMemory);
+}
+template <typename T>
+T Matrix<T>::Get(int h, int w, T* mem_Region) {
+    return mem_Region[h * Width + w]; // Đã sửa thành Row-Major
+}
+template <typename T>
+void Matrix<T>::Set(int h, int w,T value,T* mem_Region) {
+    if (h >= Height || w >= Width) {
+        throw std::runtime_error("Height or Width out of range");
+    }
+    mem_Region[h * Width + w] = value; // Đã sửa thành Row-Major
+}
+template <typename T>
+T Matrix<T>::GetHost(int h, int w) {
+    return Get(h,w,hostMemory);
+}
+template <typename T>
+T Matrix<T>::GetDevice(int h, int w) {
+    return Get(h,w,deviceMemory);
+}
 
 // DÒNG QUAN TRỌNG NHẤT: Bắt buộc đặt ở cuối cùng của file .cu
 // Ép trình biên dịch Instantiate các phiên bản này để C++ Linker có thể nhìn thấy
 template class Matrix<float>;
 template class Matrix<double>;
+template class Matrix<uint32_t>;

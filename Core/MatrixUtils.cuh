@@ -5,7 +5,9 @@
 #define OPTIMIZESDF_MATRIXUTILS_H
 #include <stdio.h>
 #include <iostream>
-#include "MatrixMemoryManager.cuh"
+#include "MatrixMemoryManager.cu"
+
+
 // ----------------------- UTILITIES FUNCTION------------------------
 __host__ __device__ void printMemory(float* mem_region,int height,int width) {
    // printf("matrix w h: %dx%d\n",height,width);

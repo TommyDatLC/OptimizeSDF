@@ -2,7 +2,6 @@
 #define SDFMain
 
 #include "../Core/Model.cuh"
-#include "changeMemoryLayout.cu"
 #include <vector>
 #include <iostream>
 #include <fstream>
@@ -16,256 +15,246 @@
 #include <chrono>
 #include <cuda.h>
 #include "../../Core/Helper.hpp"
+#include "OptixHostUtils.cuh"
+#include "SDFKernels.cuh"
 
 // -----------------------------------------------------------------------------
-// STRUCT ĐỒNG BỘ VỚI GPU
+// HÀM CHẠY OPTIX (ZERO-COPY: KHÔNG CẦN CHUYỂN ĐỔI BỘ NHỚ!)
 // -----------------------------------------------------------------------------
-struct alignas(8) Params {
-    float3* vertices;
-    float3* normals;
-    float* outputSDF;
-    OptixTraversableHandle bvhHandle;
-    int raysPerPoint;
-    float coneAngleRad;
+#include "OptixRunner.cuh"
+
+struct OptixGlobalState {
+    OptixDeviceContext context;
+    OptixModule module;
+    OptixProgramGroup raygenProgGroup;
+    OptixProgramGroup missProgGroup;
+    OptixProgramGroup hitProgGroup;
+    OptixPipeline pipeline;
+    CUdeviceptr d_rgSbt;
+    CUdeviceptr d_msSbt;
+    CUdeviceptr d_hgSbt;
+    OptixShaderBindingTable sbt;
 };
 
-template <typename T>
-struct SbtRecord {
-    alignas( OPTIX_SBT_RECORD_ALIGNMENT ) char header[OPTIX_SBT_RECORD_HEADER_SIZE];
-    T data;
-};
-typedef SbtRecord<int> RaygenRecord;
-typedef SbtRecord<int> MissRecord;
-typedef SbtRecord<int> HitgroupRecord;
+inline OptixGlobalState InitializeOptixGlobalState(const std::string& ptxCode) {
+    auto t_init_start = std::chrono::high_resolution_clock::now();
+    OptixGlobalState state;
+    state.context = OptixRunner::InitContext();
+    state.module = nullptr;
+    state.pipeline = OptixRunner::CreatePipeline(state.context, ptxCode, state.raygenProgGroup, state.missProgGroup, state.hitProgGroup, state.module);
+    state.sbt = OptixRunner::BuildSBT(state.raygenProgGroup, state.missProgGroup, state.hitProgGroup, state.d_rgSbt, state.d_msSbt, state.d_hgSbt);
 
-#define OPTIX_CHECK( call ) { OptixResult res = call; if( res != OPTIX_SUCCESS ) { fprintf( stderr, "Optix call (%s) failed with code %d (line %d)\n", #call, res, __LINE__ ); exit( 2 ); } }
-#define CUDA_CHECK( call ) { cudaError_t error = call; if( error != cudaSuccess ) { fprintf( stderr, "CUDA call (%s) failed with code %d (line %d)\n", #call, error, __LINE__ ); exit( 2 ); } }
-static void context_log_cb( unsigned int level, const char* tag, const char* message, void* /*cbdata */) { std::cerr << "[" << std::setw( 2 ) << level << "][" << std::setw( 12 ) << tag << "]: " << message << "\n"; }
+    auto t_init_done = std::chrono::high_resolution_clock::now();
+    std::cout << "[DEBUG] [SDF Pipeline] Thời gian Khởi tạo (Context, JIT Compile PTX, SBT): "
+              << std::chrono::duration<double>(t_init_done - t_init_start).count() << " giây\n";
+    return state;
+}
 
-// -----------------------------------------------------------------------------
-// HÀM CHẠY OPTIX (Đã lược bỏ việc truyền mảng tia từ CPU)
-// -----------------------------------------------------------------------------
-inline std::vector<float> RunOptixConeRayCasting(Matrix& vMat, Matrix& iMat, Matrix& nMat, int raysPerPoint, float coneAngleRadian, const std::string& ptxCode) {
-    int numVertices = vMat.Width;
-    int numFaces = iMat.Width;
+inline void DestroyOptixGlobalState(OptixGlobalState& state) {
+    CUDA_CHECK( cudaFree((void*)state.d_rgSbt) );
+    CUDA_CHECK( cudaFree((void*)state.d_msSbt) );
+    CUDA_CHECK( cudaFree((void*)state.d_hgSbt) );
+    optixPipelineDestroy(state.pipeline);
+    optixProgramGroupDestroy(state.raygenProgGroup);
+    optixProgramGroupDestroy(state.missProgGroup);
+    optixProgramGroupDestroy(state.hitProgGroup);
+    optixModuleDestroy(state.module);
+    optixDeviceContextDestroy(state.context);
+}
 
-    std::vector<float3> optixVertices(numVertices);
-    std::vector<float3> optixNormals(numVertices);
-    std::vector<uint3> optixIndices(numFaces);
+inline float* RunOptixConeRayCasting(const OptixGlobalState& state, Matrix<float>& vMat, Matrix<unsigned int>& iMat, Matrix<float>& nMat, int raysPerPoint, float coneAngleRadian) {
+    std::cout << "[DEBUG] [SDF Pipeline] Bắt đầu khởi tạo OptiX Pipeline và Build BVH...\n";
+    int numVertices = vMat.Height;
+    int numFaces = iMat.Height;
+    std::cout << "[DEBUG] [SDF Pipeline] Cấu hình tia: " << raysPerPoint << " tia/đỉnh | Góc nón: " << coneAngleRadian << " rad\n";
+    std::cout << "[DEBUG] [SDF Pipeline] Tổng số đỉnh: " << numVertices << " | Tổng số mặt: " << numFaces << "\n";
 
-    vMat.CopyToHost(); nMat.CopyToHost(); iMat.CopyToHost();
-    for(int i=0; i<numVertices; i++) {
-        optixVertices[i] = make_float3(vMat.GetHost(0, i), vMat.GetHost(1, i), vMat.GetHost(2, i));
-        optixNormals[i]  = make_float3(nMat.GetHost(0, i), nMat.GetHost(1, i), nMat.GetHost(2, i));
-    }
-    for(int i=0; i<numFaces; i++) {
-        optixIndices[i] = make_uint3((uint)iMat.GetHost(0, i), (uint)iMat.GetHost(1, i), (uint)iMat.GetHost(2, i));
-    }
+    CUdeviceptr d_vertex_ptr = (CUdeviceptr)vMat.getDevicePtr();
+    CUdeviceptr d_index_ptr = (CUdeviceptr)iMat.getDevicePtr();
+    float3* d_normals = (float3*)nMat.getDevicePtr();
 
-    float3 *d_vertices, *d_normals; uint3 *d_indices;
-    CUDA_CHECK( cudaMalloc((void**)&d_vertices, numVertices * sizeof(float3)) );
-    CUDA_CHECK( cudaMalloc((void**)&d_normals, numVertices * sizeof(float3)) );
-    CUDA_CHECK( cudaMalloc((void**)&d_indices, numFaces * sizeof(uint3)) );
-    CUDA_CHECK( cudaMemcpy(d_vertices, optixVertices.data(), numVertices * sizeof(float3), cudaMemcpyHostToDevice) );
-    CUDA_CHECK( cudaMemcpy(d_normals, optixNormals.data(), numVertices * sizeof(float3), cudaMemcpyHostToDevice) );
-    CUDA_CHECK( cudaMemcpy(d_indices, optixIndices.data(), numFaces * sizeof(uint3), cudaMemcpyHostToDevice) );
-
-    CUDA_CHECK( cudaFree(0) );
-    OptixDeviceContext context = nullptr;
-    OptixDeviceContextOptions options = {}; options.logCallbackFunction = &context_log_cb; options.logCallbackLevel = 0;
-    OPTIX_CHECK( optixDeviceContextCreate( 0, &options, &context ) );
-
-    CUdeviceptr d_vertex_ptr = (CUdeviceptr)d_vertices;
-    OptixBuildInput triangleInput = {};
-    triangleInput.type                        = OPTIX_BUILD_INPUT_TYPE_TRIANGLES;
-    triangleInput.triangleArray.vertexFormat  = OPTIX_VERTEX_FORMAT_FLOAT3;
-    triangleInput.triangleArray.numVertices   = numVertices;
-    triangleInput.triangleArray.vertexBuffers = &d_vertex_ptr;
-    triangleInput.triangleArray.indexFormat   = OPTIX_INDICES_FORMAT_UNSIGNED_INT3;
-    triangleInput.triangleArray.numIndexTriplets = numFaces;
-    triangleInput.triangleArray.indexBuffer   = (CUdeviceptr)d_indices;
-
-    uint32_t triangleInputFlags[1] = { OPTIX_GEOMETRY_FLAG_DISABLE_TRIANGLE_FACE_CULLING };
-    triangleInput.triangleArray.flags         = triangleInputFlags;
-    triangleInput.triangleArray.numSbtRecords = 1;
-
-    OptixAccelBuildOptions accelOptions = {};
-    accelOptions.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION; accelOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
-    OptixAccelBufferSizes gasBufferSizes;
-    OPTIX_CHECK( optixAccelComputeMemoryUsage( context, &accelOptions, &triangleInput, 1, &gasBufferSizes ) );
-
+    auto t_bvh_start = std::chrono::high_resolution_clock::now();
     CUdeviceptr d_tempBuffer, d_gasOutputBuffer;
-    CUDA_CHECK( cudaMalloc((void**)&d_tempBuffer, gasBufferSizes.tempSizeInBytes) );
-    CUDA_CHECK( cudaMalloc((void**)&d_gasOutputBuffer, gasBufferSizes.outputSizeInBytes) );
+    OptixTraversableHandle bvhHandle = OptixRunner::BuildBVH(state.context, d_vertex_ptr, d_index_ptr, numVertices, numFaces, d_tempBuffer, d_gasOutputBuffer);
+    auto t_bvh_done = std::chrono::high_resolution_clock::now();
+    std::cout << "[DEBUG] [SDF Pipeline] Thời gian Xây dựng BVH: "
+              << std::chrono::duration<double>(t_bvh_done - t_bvh_start).count() << " giây\n";
 
-    OptixTraversableHandle bvhHandle = 0;
-    OPTIX_CHECK( optixAccelBuild( context, 0, &accelOptions, &triangleInput, 1, d_tempBuffer, gasBufferSizes.tempSizeInBytes, d_gasOutputBuffer, gasBufferSizes.outputSizeInBytes, &bvhHandle, nullptr, 0 ) );
+    float* d_rawSDF = OptixRunner::LaunchOptixAndCUB(
+        numVertices, raysPerPoint, coneAngleRadian,
+        d_vertex_ptr, d_normals,
+        bvhHandle, state.pipeline, state.sbt
+    );
+
     CUDA_CHECK( cudaFree((void*)d_tempBuffer) );
+    CUDA_CHECK( cudaFree((void*)d_gasOutputBuffer) );
 
-    OptixModule module = nullptr;
-    OptixModuleCompileOptions moduleCompileOptions = {};
-    OptixPipelineCompileOptions pipelineCompileOptions = {};
-    pipelineCompileOptions.usesMotionBlur        = false;
-    pipelineCompileOptions.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
-    pipelineCompileOptions.numPayloadValues      = 1;
-    pipelineCompileOptions.numAttributeValues    = 2;
-    pipelineCompileOptions.exceptionFlags        = OPTIX_EXCEPTION_FLAG_NONE;
-    pipelineCompileOptions.pipelineLaunchParamsVariableName = "params";
-    OPTIX_CHECK( optixModuleCreate( context, &moduleCompileOptions, &pipelineCompileOptions, ptxCode.c_str(), ptxCode.size(), nullptr, nullptr, &module ) );
-
-    OptixProgramGroup raygenProgGroup, missProgGroup, hitProgGroup;
-    OptixProgramGroupOptions pgOptions = {};
-
-    OptixProgramGroupDesc raygenDesc = {}; raygenDesc.kind = OPTIX_PROGRAM_GROUP_KIND_RAYGEN; raygenDesc.raygen.module = module; raygenDesc.raygen.entryFunctionName = "__raygen__sdf_cone";
-    OPTIX_CHECK( optixProgramGroupCreate( context, &raygenDesc, 1, &pgOptions, nullptr, nullptr, &raygenProgGroup ) );
-
-    OptixProgramGroupDesc missDesc = {}; missDesc.kind = OPTIX_PROGRAM_GROUP_KIND_MISS;
-    OPTIX_CHECK( optixProgramGroupCreate( context, &missDesc, 1, &pgOptions, nullptr, nullptr, &missProgGroup ) );
-
-    OptixProgramGroupDesc hitDesc = {}; hitDesc.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP; hitDesc.hitgroup.moduleCH = module; hitDesc.hitgroup.entryFunctionNameCH = "__closesthit__sdf";
-    OPTIX_CHECK( optixProgramGroupCreate( context, &hitDesc, 1, &pgOptions, nullptr, nullptr, &hitProgGroup ) );
-
-    OptixProgramGroup programGroups[] = { raygenProgGroup, missProgGroup, hitProgGroup };
-    OptixPipeline pipeline = nullptr;
-    OptixPipelineLinkOptions pipelineLinkOptions = {}; pipelineLinkOptions.maxTraceDepth = 1;
-    OPTIX_CHECK( optixPipelineCreate( context, &pipelineCompileOptions, &pipelineLinkOptions, programGroups, 3, nullptr, nullptr, &pipeline ) );
-
-    RaygenRecord rgSbt; OPTIX_CHECK( optixSbtRecordPackHeader( raygenProgGroup, &rgSbt ) ); CUdeviceptr d_rgSbt; CUDA_CHECK( cudaMalloc((void**)&d_rgSbt, sizeof(RaygenRecord)) ); CUDA_CHECK( cudaMemcpy((void*)d_rgSbt, &rgSbt, sizeof(RaygenRecord), cudaMemcpyHostToDevice) );
-    MissRecord msSbt; OPTIX_CHECK( optixSbtRecordPackHeader( missProgGroup, &msSbt ) ); CUdeviceptr d_msSbt; CUDA_CHECK( cudaMalloc((void**)&d_msSbt, sizeof(MissRecord)) ); CUDA_CHECK( cudaMemcpy((void*)d_msSbt, &msSbt, sizeof(MissRecord), cudaMemcpyHostToDevice) );
-    HitgroupRecord hgSbt; OPTIX_CHECK( optixSbtRecordPackHeader( hitProgGroup, &hgSbt ) ); CUdeviceptr d_hgSbt; CUDA_CHECK( cudaMalloc((void**)&d_hgSbt, sizeof(HitgroupRecord)) ); CUDA_CHECK( cudaMemcpy((void*)d_hgSbt, &hgSbt, sizeof(HitgroupRecord), cudaMemcpyHostToDevice) );
-
-    OptixShaderBindingTable sbt = {};
-    sbt.raygenRecord = d_rgSbt; sbt.missRecordBase = d_msSbt; sbt.missRecordStrideInBytes = sizeof( MissRecord ); sbt.missRecordCount = 1;
-    sbt.hitgroupRecordBase = d_hgSbt; sbt.hitgroupRecordStrideInBytes = sizeof( HitgroupRecord ); sbt.hitgroupRecordCount = 1;
-
-    float* d_outputSDF;
-    CUDA_CHECK( cudaMalloc((void**)&d_outputSDF, numVertices * sizeof(float)) );
-    CUDA_CHECK( cudaMemset(d_outputSDF, 0, numVertices * sizeof(float)) );
-
-    Params params = {};
-    params.vertices     = d_vertices;
-    params.normals      = d_normals;
-    params.outputSDF    = d_outputSDF;
-    params.bvhHandle    = bvhHandle;
-    params.raysPerPoint = raysPerPoint;
-    params.coneAngleRad = coneAngleRadian;
-
-    CUdeviceptr d_params;
-    CUDA_CHECK( cudaMalloc((void**)&d_params, sizeof(Params)) );
-    CUDA_CHECK( cudaMemcpy((void*)d_params, &params, sizeof(Params), cudaMemcpyHostToDevice) );
-
-    std::cout << "OptiX: Đang bắn " << raysPerPoint << " tia Hammersley Uniform/đỉnh...\n";
-    OPTIX_CHECK( optixLaunch( pipeline, 0, d_params, sizeof(Params), &sbt, numVertices, 1, 1 ) );
-    CUDA_CHECK( cudaDeviceSynchronize() );
-
-    std::vector<float> results(numVertices);
-    CUDA_CHECK( cudaMemcpy(results.data(), d_outputSDF, numVertices * sizeof(float), cudaMemcpyDeviceToHost) );
-
-    cudaFree(d_vertices); cudaFree(d_normals); cudaFree(d_indices);
-    cudaFree((void*)d_gasOutputBuffer); cudaFree((void*)d_rgSbt);
-    cudaFree((void*)d_msSbt); cudaFree((void*)d_hgSbt);
-    cudaFree((void*)d_params); cudaFree(d_outputSDF);
-
-    optixPipelineDestroy(pipeline); optixProgramGroupDestroy(raygenProgGroup); optixProgramGroupDestroy(missProgGroup); optixProgramGroupDestroy(hitProgGroup); optixModuleDestroy(module); optixDeviceContextDestroy(context);
-
-    return results;
+    return d_rawSDF;
 }
 
 // -----------------------------------------------------------------------------
 // HÀM CHÍNH GỌI TỪ NGOÀI VÀO (OPTIX + LÀM MƯỢT TRÊN GPU)
 // -----------------------------------------------------------------------------
-inline void CaculatingSDFUsingOptix(Model& model, const std::string& shader, int input_raysPerPoint = 64, float input_angle = 150.0) {
-    std::cout << "Bắt đầu tính toán SDF bằng OptiX...\n";
+inline void CaculatingSDFUsingOptix(Model& model, const OptixGlobalState& state, int input_raysPerPoint = 64, float input_angle = 120.0) {
+    std::cout << "[DEBUG] [SDF Pipeline] Khởi chạy toàn bộ quy trình tính toán SDF bằng OptiX...\n";
     float coneAngle = input_angle * (3.14159265f / 180.0f);
 
-    Matrix& vertices = model.GetVertexMatrix();
-    Matrix& indices = model.GetVertexIndicesMatrix();
-    int numVertices = vertices.Width;
-    int numFaces = indices.Width;
+    Matrix<float>& vertices = model.GetVertexMatrix();
+    Matrix<unsigned int>& indices = model.GetVertexIndicesMatrix();
+    int numVertices = vertices.Height;
+    int numFaces = indices.Height;
 
     auto start = std::chrono::high_resolution_clock::now();
+    std::cout << "[DEBUG] [SDF Pipeline] Đang cập nhật Vertex Normal cho Model...\n";
     model.UpdateNormal();
-    Matrix& vNormal = model.GetVertexNormalMatrix();
+    Matrix<float>& vNormal = model.GetVertexNormalMatrix();
+    auto t_normal = std::chrono::high_resolution_clock::now();
+    std::cout << "[DEBUG] [SDF Pipeline] Thời gian Cập nhật Normal: " << std::chrono::duration<double>(t_normal - start).count() << " giây\n";
 
-    // 1. TÍNH SDF THÔ TỪ OPTIX (ĐÃ CÓ TRỌNG SỐ VÀ OUTLIER TỪ KERNEL)
-    std::vector<float> rawSDF = RunOptixConeRayCasting(vertices, indices, vNormal, input_raysPerPoint, coneAngle, shader);
 
+    // 1. TÍNH SDF THÔ TỪ OPTIX
+    std::cout << "[DEBUG] [SDF Pipeline] Đang tiến hành OptiX Ray Tracing...\n";
+    float* d_rawSDF = RunOptixConeRayCasting(state, vertices, indices, vNormal, input_raysPerPoint, coneAngle);
+
+    float firstRawSDF = 0.0f;
+    CUDA_CHECK(cudaMemcpy(&firstRawSDF, d_rawSDF, sizeof(float), cudaMemcpyDeviceToHost));
+    auto t_optix_done = std::chrono::high_resolution_clock::now();
+    std::cout << "[DEBUG] [SDF Pipeline] Tính toán OptiX hoàn tất!\n";
+    std::cout << "[DEBUG] [SDF Pipeline] Giá trị rawSDF của đỉnh đầu tiên (vừa nhận về từ GPU): " << firstRawSDF << "\n";
+    
     // =========================================================================
     // 2. CHUẨN BỊ MẠNG LƯỚI GRAPH CHO VIỆC SMOOTHING TRÊN GPU
     // =========================================================================
-    std::cout << "Đóng gói mạng lưới CSR Graph...\n";
-    std::vector<std::vector<int>> adjacency(numVertices);
-    indices.CopyToHost();
-    for (int i = 0; i < numFaces; i++) {
-        int v0 = (int)indices.GetHost(0, i), v1 = (int)indices.GetHost(1, i), v2 = (int)indices.GetHost(2, i);
-        adjacency[v0].push_back(v1); adjacency[v0].push_back(v2);
-        adjacency[v1].push_back(v0); adjacency[v1].push_back(v2);
-        adjacency[v2].push_back(v0); adjacency[v2].push_back(v1);
-    }
+    std::cout << "Đóng gói mạng lưới CSR Graph bằng GPU CUB...\n";
+    auto t_alloc_csr_start = std::chrono::high_resolution_clock::now();
+    int numEdges = numFaces * 6;
+    uint64_t *d_edges, *d_sortedEdges;
+    CUDA_CHECK(cudaMalloc(&d_edges, numEdges * sizeof(uint64_t)));
+    CUDA_CHECK(cudaMalloc(&d_sortedEdges, numEdges * sizeof(uint64_t)));
+    
+    uint64_t *d_uniqueEdges;
+    int *d_numUniqueEdges;
+    CUDA_CHECK(cudaMalloc(&d_uniqueEdges, numEdges * sizeof(uint64_t)));
+    CUDA_CHECK(cudaMalloc(&d_numUniqueEdges, sizeof(int)));
 
-    std::vector<int> h_neighborOffsets(numVertices + 1, 0);
-    std::vector<int> h_neighborLists;
-    for (int i = 0; i < numVertices; i++) {
-        std::sort(adjacency[i].begin(), adjacency[i].end());
-        adjacency[i].erase(std::unique(adjacency[i].begin(), adjacency[i].end()), adjacency[i].end());
-        h_neighborOffsets[i] = h_neighborLists.size();
-        h_neighborLists.insert(h_neighborLists.end(), adjacency[i].begin(), adjacency[i].end());
-    }
-    h_neighborOffsets[numVertices] = h_neighborLists.size();
-
-    // =========================================================================
-    // 3. THỰC THI SMOOTHING BẰNG KERNEL TRÊN VRAM CỦA GPU
-    // =========================================================================
-    std::cout << "Khởi động Anisotropic Smoothing (GPU)...\n";
-    float3* d_vertices; float* d_sdfBuf1; float* d_sdfBuf2; int* d_nbrOffsets; int* d_nbrLists;
-
-    cudaMalloc((void**)&d_vertices, numVertices * sizeof(float3));
-    cudaMalloc((void**)&d_sdfBuf1, numVertices * sizeof(float));
-    cudaMalloc((void**)&d_sdfBuf2, numVertices * sizeof(float));
-    cudaMalloc((void**)&d_nbrOffsets, (numVertices + 1) * sizeof(int));
-    cudaMalloc((void**)&d_nbrLists, h_neighborLists.size() * sizeof(int));
+    int *d_nbrOffsets, *d_nbrLists;
+    CUDA_CHECK(cudaMalloc((void**)&d_nbrOffsets, (numVertices + 1) * sizeof(int)));
+    // We don't know numUniqueEdges yet, so we allocate maximum possible size for d_nbrLists
+    CUDA_CHECK(cudaMalloc((void**)&d_nbrLists, numEdges * sizeof(int)));
+    
+    auto t_alloc_csr_end = std::chrono::high_resolution_clock::now();
+    std::cout << "[DEBUG] [SDF Pipeline] Thời gian Cấp phát bộ nhớ cho CSR Graph (cudaMalloc): " << std::chrono::duration<double>(t_alloc_csr_end - t_alloc_csr_start).count() << " giây\n";
 
     int blockSize = 256;
-    int gridSize = (numVertices + blockSize - 1) / blockSize;
-    ConvertMatrixToFloat3<<<gridSize, blockSize>>>(vertices.getDevicePtr(), d_vertices, numVertices, vertices.Height);
+    int gridSizeFaces = (numFaces + blockSize - 1) / blockSize;
+    GPUGenerateEdges<<<gridSizeFaces, blockSize>>>((const uint3*)indices.getDevicePtr(), numFaces, d_edges);
+    CUDA_CHECK(cudaDeviceSynchronize());
 
-    cudaMemcpy(d_sdfBuf1, rawSDF.data(), numVertices * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_nbrOffsets, h_neighborOffsets.data(), (numVertices + 1) * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_nbrLists, h_neighborLists.data(), h_neighborLists.size() * sizeof(int), cudaMemcpyHostToDevice);
+    void *d_temp_storage_sort = nullptr;
+    size_t temp_storage_bytes_sort = 0;
+    cub::DeviceRadixSort::SortKeys(d_temp_storage_sort, temp_storage_bytes_sort, d_edges, d_sortedEdges, numEdges);
+    CUDA_CHECK(cudaMalloc(&d_temp_storage_sort, temp_storage_bytes_sort));
+    cub::DeviceRadixSort::SortKeys(d_temp_storage_sort, temp_storage_bytes_sort, d_edges, d_sortedEdges, numEdges);
+    CUDA_CHECK(cudaDeviceSynchronize());
 
-    // Thuật toán chạy 3 vòng lặp Ping-Pong đảo Buffer qua lại
-    int numIterations = 3;
-    float sigmaSpatial = 0.05f;
-    float sigmaRange = 0.1f;
+    void *d_temp_storage_unique = nullptr;
+    size_t temp_storage_bytes_unique = 0;
+    cub::DeviceSelect::Unique(d_temp_storage_unique, temp_storage_bytes_unique, d_sortedEdges, d_uniqueEdges, d_numUniqueEdges, numEdges);
+    CUDA_CHECK(cudaMalloc(&d_temp_storage_unique, temp_storage_bytes_unique));
+    cub::DeviceSelect::Unique(d_temp_storage_unique, temp_storage_bytes_unique, d_sortedEdges, d_uniqueEdges, d_numUniqueEdges, numEdges);
+    CUDA_CHECK(cudaDeviceSynchronize());
 
-    for (int iter = 0; iter < numIterations; iter++) {
-        float* d_in = (iter % 2 == 0) ? d_sdfBuf1 : d_sdfBuf2;
-        float* d_out = (iter % 2 == 0) ? d_sdfBuf2 : d_sdfBuf1;
+    int numUniqueEdges = 0;
+    CUDA_CHECK(cudaMemcpy(&numUniqueEdges, d_numUniqueEdges, sizeof(int), cudaMemcpyDeviceToHost));
 
-        AnisotropicSmoothingKernel<<<gridSize, blockSize>>>(
-            d_vertices, d_in, d_out, d_nbrOffsets, d_nbrLists,
-            numVertices, sigmaSpatial, sigmaRange
-        );
-        cudaDeviceSynchronize();
-    }
+    int gridSizeUnique = (numUniqueEdges + blockSize - 1) / blockSize;
+    GPUExtractCSR<<<gridSizeUnique, blockSize>>>(d_uniqueEdges, numUniqueEdges, d_nbrOffsets, d_nbrLists, numVertices);
+    CUDA_CHECK(cudaDeviceSynchronize());
+    auto t_csr = std::chrono::high_resolution_clock::now();
+    std::cout << "[DEBUG] [SDF Pipeline] Thời gian Xây dựng CSR Graph: " << std::chrono::duration<double>(t_csr - t_optix_done).count() << " giây\n";
 
-    std::vector<float> finalSDF(numVertices);
-    float* d_finalOut = (numIterations % 2 == 0) ? d_sdfBuf1 : d_sdfBuf2;
-    cudaMemcpy(finalSDF.data(), d_finalOut, numVertices * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaFree(d_edges); cudaFree(d_sortedEdges); cudaFree(d_temp_storage_sort);
+    cudaFree(d_uniqueEdges); cudaFree(d_numUniqueEdges); cudaFree(d_temp_storage_unique);
 
-    cudaFree(d_vertices); cudaFree(d_sdfBuf1); cudaFree(d_sdfBuf2);
-    cudaFree(d_nbrOffsets); cudaFree(d_nbrLists);
+//     =========================================================================
+//     3. CHUẨN HÓA VÀ THỰC THI SMOOTHING BẰNG KERNEL TRÊN VRAM CỦA GPU
+  //   =========================================================================
+    std::cout << "Khởi động Anisotropic Smoothing (GPU)...\n";
+
+//     TÍNH Bounding Box Diagonal và Normalization trên GPU
+     auto t_alloc_smooth_start = std::chrono::high_resolution_clock::now();
+     float* d_minMaxBox;
+     CUDA_CHECK(cudaMalloc((void**)&d_minMaxBox, 6 * sizeof(float)));
+     float initBox[6] = {1e15f, -1e15f, 1e15f, -1e15f, 1e15f, -1e15f};
+     CUDA_CHECK(cudaMemcpy(d_minMaxBox, initBox, 6 * sizeof(float), cudaMemcpyHostToDevice));
+
+     // Tái sử dụng vùng nhớ GPU đã cấp từ OptiX/CUB pipeline!
+     float* d_sdfBuf1 = d_rawSDF; 
+     float* d_sdfBuf2;
+     cudaMalloc((void**)&d_sdfBuf2, numVertices * sizeof(float));
+
+     float* d_minMaxSDF;
+     CUDA_CHECK(cudaMalloc((void**)&d_minMaxSDF, 2 * sizeof(float)));
+     float initSDF[2] = {1e15f, -1e15f};
+     CUDA_CHECK(cudaMemcpy(d_minMaxSDF, initSDF, 2 * sizeof(float), cudaMemcpyHostToDevice));
+     auto t_alloc_smooth_end = std::chrono::high_resolution_clock::now();
+     std::cout << "[DEBUG] [SDF Pipeline] Thời gian Cấp phát bộ nhớ cho Smoothing (cudaMalloc + Memcpy): " << std::chrono::duration<double>(t_alloc_smooth_end - t_alloc_smooth_start).count() << " giây\n";
+
+     int gridSizeVerts = (numVertices + blockSize - 1) / blockSize;
+     GPUComputeBoundingBox<<<gridSizeVerts, blockSize>>>((const float3*)vertices.getDevicePtr(), numVertices, d_minMaxBox);
+     
+     float h_minMaxBox[6];
+     CUDA_CHECK(cudaMemcpy(h_minMaxBox, d_minMaxBox, 6 * sizeof(float), cudaMemcpyDeviceToHost));
+     cudaFree(d_minMaxBox);
+     
+     float dx = h_minMaxBox[1] - h_minMaxBox[0];
+     float dy = h_minMaxBox[3] - h_minMaxBox[2];
+     float dz = h_minMaxBox[5] - h_minMaxBox[4];
+     float bboxDiagonal = std::sqrt(dx*dx + dy*dy + dz*dz);
+
+     GPUComputeSDFMinMax<<<gridSizeVerts, blockSize>>>(d_sdfBuf1, numVertices, d_minMaxSDF);
+     GPUApplySDFNormalization<<<gridSizeVerts, blockSize>>>(d_sdfBuf1, numVertices, d_minMaxSDF);
+     CUDA_CHECK(cudaDeviceSynchronize());
+     cudaFree(d_minMaxSDF);
+
+   //  COMMENT TEMPORARILY TO TEST rawSDF
+
+     blockSize = 256;
+     int gridSize = (numVertices + blockSize - 1) / blockSize;
+     int numIterations = 3;
+     float sigmaSpatial = bboxDiagonal * 0.02f; // Tính sigma không gian động dựa trên bounding box
+     float sigmaRange = 0.1f; // sigmaRange = 0.1f chuẩn hóa cho range [0, 1]
+
+     // Tái sử dụng trực tiếp con trỏ Matrix, không cần mảng temp d_vertices
+     float3* d_vertices_direct = (float3*)vertices.getDevicePtr();
+
+     for (int iter = 0; iter < numIterations; iter++) {
+         float* d_in = (iter % 2 == 0) ? d_sdfBuf1 : d_sdfBuf2;
+         float* d_out = (iter % 2 == 0) ? d_sdfBuf2 : d_sdfBuf1;
+
+         AnisotropicSmoothingKernel<<<gridSize, blockSize>>>(
+             d_vertices_direct, d_in, d_out, d_nbrOffsets, d_nbrLists,
+             numVertices, sigmaSpatial, sigmaRange
+         );
+         cudaDeviceSynchronize();
+     }
+    auto t_smooth = std::chrono::high_resolution_clock::now();
+    std::cout << "[DEBUG] [SDF Pipeline] Thời gian Làm mượt (Anisotropic Smoothing): " << std::chrono::duration<double>(t_smooth - t_csr).count() << " giây\n";
 
     auto stop = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> duration = stop - start;
     std::cout << "Thời gian tổng cộng (OptiX + GPU Smooth): " << duration.count() << " giây\n";
+     std::vector<float> finalSDF(numVertices);
+     float* d_finalOut = (numIterations % 2 == 0) ? d_sdfBuf1 : d_sdfBuf2;
+     cudaMemcpy(finalSDF.data(), d_finalOut, numVertices * sizeof(float), cudaMemcpyDeviceToHost);
 
-    double maxDist = 0.0;
-    for (int i = 0; i < vertices.Width; ++i) {
-        if (finalSDF[i] > maxDist) maxDist = finalSDF[i];
+     cudaFree(d_sdfBuf1); cudaFree(d_sdfBuf2);
+     cudaFree(d_nbrOffsets); cudaFree(d_nbrLists);
+
+    for (int i = 0; i < vertices.Height; ++i) {
         model.AddHeatMapVertexForPreviewEngine(i, finalSDF[i]);
     }
-
-    model.AddToScene("Optix_SDF_Model_Smoothed", false);
+    model.SetShowHeatMap(true);
+    model.AddToScene("Optix_SDF_Model_Smoothed", true);
 }
 #endif

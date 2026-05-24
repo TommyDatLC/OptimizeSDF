@@ -1,22 +1,12 @@
 #include <string>
 #include <iostream>
-#include <fstream>
-#include <sstream>
 #include <cuda.h>
 #include <cublas_v2.h>
 #include <filesystem> // Yêu cầu C++17
-
-#include "Core/MatrixMemoryManager.cuh"
-#include "Core/ClipSpaceConversion.hpp"
-#include "Core/Matrix.cuh"
-#include "Core/Model.cuh"
-#include "Core/ModelHelper.cu"
 #include "src/Optix/interface.cu"
-#include "src/OpenCL/interface.cpp"
 #include "src/Compare.hpp"
 
 #include "polyscope/polyscope.h"
-#include "OptiX/optix.h"
 #include "OptiX/optix_stubs.h"
 #include <optix_function_table_definition.h>
 
@@ -49,6 +39,10 @@ void initialize()
     // std::string OpenCLShader = readFile("kernel.cl");
     // auto clEnv = InitOpenCLEnvironment(OpenCLShader);
 
+    std::cout << "==================================================\n";
+    std::cout << "BẮT ĐẦU KHỞI TẠO HỆ THỐNG TRUY VẤN OPTIX\n";
+    OptixGlobalState optixState = InitializeOptixGlobalState(optixPTX);
+
     std::cout << "Bắt đầu quét thư mục: " << folderPath << "\n";
 
     // Đổi thành true để hiển thị Polyscope cửa sổ 3D
@@ -77,6 +71,7 @@ void initialize()
 
             // Đọc file PyMeshLab SDF và gán vào modelPy
             LoadPyHeatMap(modelOptix, sdfFilePath);
+            modelOptix.SetShowHeatMap(true); // Bật hiển thị Heat Map cho PyMeshLab
 
             // Đăng ký modelPy lên Polyscope với tên riêng biệt
             modelOptix.AddToScene("PyMeshLab_SDF_Model", false);
@@ -87,7 +82,7 @@ void initialize()
 
 
             // Chạy tính toán bằng OptiX Shader
-            CaculatingSDFUsingOptix(modelOptix, optixPTX);
+            CaculatingSDFUsingOptix(modelOptix, optixState);
 
             // -------------------------------------------------------------
             // HIỂN THỊ GIAO DIỆN ĐỐI CHIẾU 3D
@@ -101,6 +96,8 @@ void initialize()
             }
         }
     }
+
+    DestroyOptixGlobalState(optixState);
 
     std::cout << "==================================================\n";
     std::cout << "Đã hoàn tất xử lý tất cả các file!\n";

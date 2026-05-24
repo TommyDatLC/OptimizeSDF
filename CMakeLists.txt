@@ -6,6 +6,11 @@ project(OptimizeSDF LANGUAGES C CXX CUDA)
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS}")
 set(CMAKE_CUDA_STANDARD 20)
 set(CMAKE_CXX_STANDARD 20)
+
+if (MSVC)
+    add_compile_options("$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/Zc:preprocessor>")
+endif()
+
 find_package(OpenCL REQUIRED)
 include(FetchContent)
 FetchContent_Declare(
@@ -23,9 +28,7 @@ add_executable(OptimizeSDF
         Core/Matrix.cu
         Core/Matrix.cuh
         Core/MatrixMemoryManager.cu
-        Core/MatrixMemoryManager.cuh
         Core/MatrixUtils.cuh
-        Core/ClipSpaceConversion.hpp
         Core/MathHelper.cu
         Core/Model.cu
         Core/Model.cuh
@@ -33,7 +36,6 @@ add_executable(OptimizeSDF
         Core/Helper.hpp
         src/Optix/interface.cu
         src/Compare.hpp
-        src/Optix/changeMemoryLayout.cu
 )
 add_library(OptixShaders OBJECT src/Optix/SDFOptix.cu)
 
@@ -71,4 +73,3 @@ target_link_libraries(OptimizeSDF
 # BƯỚC 3: CÁC THAO TÁC KHÁC
 # ==============================================================================
 file(COPY "Model" DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/Debug)
-file(COPY "src/OpenCL/kernel.cl" DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/Debug)

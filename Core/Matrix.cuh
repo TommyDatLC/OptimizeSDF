@@ -15,8 +15,9 @@ private:
     size_t totalSizeInMemory = 0;
 
     void mul(const Matrix<T> &A, const Matrix<T> &B, T **device_dest);
+    void SetDevice(int h, int w, T value);
     T Get(int h,int w,T* mem_Region);
-    void Set(int h,int w,T value,T* mem_Region);
+    void Set(int h, int w, T value, T* mem_Region);
     Matrix(T* deviceMemory);
 public:
     // Move constructor
@@ -32,6 +33,7 @@ public:
     void Print();
     void PrintOnGPU();
     T GetHost(int h,int w);
+    T GetDevice(int h, int w);
     void SetHost(int h,int w, T value);
     T* getDevicePtr() { return deviceMemory; }
     T* getHostPtr() { return hostMemory; }
