@@ -78,6 +78,60 @@ A thick region (like a torso) will have large SDF values; a thin region (like a 
 
 ---
 
+## Time Complexity Analysis
+
+### OptiX (Ray Tracing)
+
+| Stage | Complexity | Description |
+| :--- | :---: | :--- |
+| Normal computation | O(F + V) | Accumulate face normals per vertex, then normalize |
+| BVH construction | O(F log F) | Build bounding volume hierarchy over all triangles |
+| Ray tracing | O(V x R x log F) | For each vertex, trace R rays through BVH (log F per ray) |
+| Weighted average | O(V x R) | Sum distance x weight per vertex |
+| CSR graph build | O(F) | Extract edges from faces, sort, deduplicate |
+| Anisotropic smoothing | O(V x N x I) | For each vertex, blend with N neighbors, repeat I times |
+| **Total** | **O(V x R x log F)** | Dominated by ray tracing through BVH |
+
+Where: V = vertices, F = faces, R = rays per vertex (64), N = avg neighbors (~6), I = smoothing iterations (3)
+
+### PyMeshLab GPU (Spawning Camera + Depth Peeling)
+
+| Stage | Complexity | Description |
+| :--- | :---: | :--- |
+| Upload to textures | O(V) | Pack vertex positions and normals into GPU textures |
+| Per camera direction (x N) | | |
+| -- Spawn camera | O(1) | Set up orthographic projection |
+| -- Depth peeling | O(F x P) | Rasterize mesh P times to peel P layers |
+| -- SDF shader | O(V) | For each vertex, sample depth textures and accumulate |
+| Readback | O(V) | Copy FBO results to CPU, divide sums |
+| **Total** | **O(N x F x P)** | Dominated by rasterizing the mesh N times with P peeling layers |
+
+Where: N = camera directions (128), F = faces, P = peeling layers (~10), V = vertices
+
+### Head-to-Head Complexity Comparison
+
+| Aspect | OptiX | PyMeshLab GPU |
+| :--- | :--- | :--- |
+| **Dominant term** | V x R x log F | N x F x P |
+| **Scales with vertices** | Yes (linear) | No (vertices only affect shader pass) |
+| **Scales with faces** | Logarithmic (BVH traversal) | Linear (rasterization per direction) |
+| **Per-ray cost** | O(log F) -- HW BVH traversal | O(1) -- rasterization + depth test |
+| **Multi-layer handling** | Single hit only | P layers via depth peeling |
+| **With typical values** | V x 64 x log F | 128 x F x 10 |
+
+### Why OptiX Wins on Larger Models
+
+For a mesh with V vertices and F faces (typically F ~ 2V for triangle meshes):
+
+- **OptiX**: O(64V x log(2V)) -- grows linearly with V, with a logarithmic factor from BVH
+- **PyMeshLab**: O(1280 x 2V) = O(2560V) -- also linear with V, but with a much larger constant (128 directions x 10 peeling layers)
+
+The key difference is the **constant factor**. OptiX traces 64 rays per vertex through hardware-accelerated BVH (very fast per ray). PyMeshLab renders the entire mesh 128 times from different viewpoints with 10 depth peeling passes each, which involves full rasterization of all F triangles per pass.
+
+Additionally, PyMeshLab has a fixed ~0.3s overhead from OpenGL context initialization, texture upload, and GPU program compilation that doesn't scale with model size.
+
+---
+
 ## SDF via NVIDIA OptiX (Hardware Ray Tracing)
 
 This approach runs the entire SDF pipeline on the GPU using CUDA and NVIDIA's hardware-accelerated ray tracing (RT Cores). Every stage -- from normal computation to ray tracing to post-processing -- executes on the GPU with zero CPU involvement.
