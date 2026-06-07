@@ -76,59 +76,50 @@ A thick region (like a torso) will have large SDF values; a thin region (like a 
 
 > **Note:** The cone angle differs between the two implementations (120 vs 150 degrees). This is the default for each respective library. A wider cone captures more rays from oblique angles, which can affect SDF accuracy on thin structures.
 
----
+### GPU Time Complexity Analysis
 
-## Time Complexity Analysis
+#### OptiX (Hardware Ray Tracing)
 
-### OptiX (Ray Tracing)
-
-| Stage | Complexity | Description |
-| :--- | :---: | :--- |
-| Normal computation | O(F + V) | Accumulate face normals per vertex, then normalize |
-| BVH construction | O(F log F) | Build bounding volume hierarchy over all triangles |
-| Ray tracing | O(V x R x log F) | For each vertex, trace R rays through BVH (log F per ray) |
-| Weighted average | O(V x R) | Sum distance x weight per vertex |
-| CSR graph build | O(F) | Extract edges from faces, sort, deduplicate |
-| Anisotropic smoothing | O(V x N x I) | For each vertex, blend with N neighbors, repeat I times |
-| **Total** | **O(V x R x log F)** | Dominated by ray tracing through BVH |
-
-Where: V = vertices, F = faces, R = rays per vertex (64), N = avg neighbors (~6), I = smoothing iterations (3)
-
-### PyMeshLab GPU (Spawning Camera + Depth Peeling)
-
-| Stage | Complexity | Description |
-| :--- | :---: | :--- |
-| Upload to textures | O(V) | Pack vertex positions and normals into GPU textures |
-| Per camera direction (x N) | | |
-| -- Spawn camera | O(1) | Set up orthographic projection |
-| -- Depth peeling | O(F x P) | Rasterize mesh P times to peel P layers |
-| -- SDF shader | O(V) | For each vertex, sample depth textures and accumulate |
-| Readback | O(V) | Copy FBO results to CPU, divide sums |
-| **Total** | **O(N x F x P)** | Dominated by rasterizing the mesh N times with P peeling layers |
-
-Where: N = camera directions (128), F = faces, P = peeling layers (~10), V = vertices
-
-### Head-to-Head Complexity Comparison
-
-| Aspect | OptiX | PyMeshLab GPU |
+| Stage | Time Complexity | Description |
 | :--- | :--- | :--- |
-| **Dominant term** | V x R x log F | N x F x P |
-| **Scales with vertices** | Yes (linear) | No (vertices only affect shader pass) |
-| **Scales with faces** | Logarithmic (BVH traversal) | Linear (rasterization per direction) |
-| **Per-ray cost** | O(log F) -- HW BVH traversal | O(1) -- rasterization + depth test |
-| **Multi-layer handling** | Single hit only | P layers via depth peeling |
-| **With typical values** | V x 64 x log F | 128 x F x 10 |
+| BVH Build | O(T log T) | Build acceleration structure from T triangles using RT Cores |
+| Per-vertex Ray Tracing | O(V × R × log T) | For each of V vertices, trace R rays through BVH (log T traversal) |
+| Weighted Average | O(V × R) | Accumulate distance × weight per vertex |
+| CSR Graph Build | O(F log F) | Extract edges from F faces, sort, deduplicate |
+| Anisotropic Smoothing | O(V × E × I) | I iterations over V vertices with E neighbors each |
+| Normalization | O(V) | Min-max + log compression |
+| **Total** | **O(V × R × log T + F log F + V × E × I)** | Dominated by ray tracing and graph construction |
 
-### Why OptiX Wins on Larger Models
+Where: V = vertices, R = rays per vertex (64), T = triangles, F = faces, E = avg edges per vertex, I = smoothing iterations (3)
 
-For a mesh with V vertices and F faces (typically F ~ 2V for triangle meshes):
+#### VCGlib/MeshLab GPU (Spawning Camera + Depth Peeling)
 
-- **OptiX**: O(64V x log(2V)) -- grows linearly with V, with a logarithmic factor from BVH
-- **PyMeshLab**: O(1280 x 2V) = O(2560V) -- also linear with V, but with a much larger constant (128 directions x 10 peeling layers)
+| Stage | Time Complexity | Description |
+| :--- | :--- | :--- |
+| Upload to Textures | O(V) | Pack vertex positions and normals into GPU textures |
+| Per-direction Rasterization | O(N × F) | For each of N camera directions, rasterize all F triangles |
+| Depth Peeling | O(N × P × F) | P layers of peeling per direction, each rendering F triangles |
+| SDF Fragment Shader | O(N × V) | For each direction, compute thickness for all V vertices |
+| Additive Blending | O(N × V) | Accumulate results into FBO (free via GPU blending) |
+| Readback | O(V) | Single `glReadPixels` call, divide red by green |
+| **Total** | **O(N × P × F + N × V)** | Dominated by rasterization and depth peeling |
 
-The key difference is the **constant factor**. OptiX traces 64 rays per vertex through hardware-accelerated BVH (very fast per ray). PyMeshLab renders the entire mesh 128 times from different viewpoints with 10 depth peeling passes each, which involves full rasterization of all F triangles per pass.
+Where: N = camera directions (128), P = peeling layers (10), F = faces, V = vertices
 
-Additionally, PyMeshLab has a fixed ~0.3s overhead from OpenGL context initialization, texture upload, and GPU program compilation that doesn't scale with model size.
+#### Comparison
+
+| Aspect | OptiX | VCGlib/MeshLab GPU |
+| :--- | :--- | :--- |
+| **Dominant term** | V × R × log T | N × P × F |
+| **Rays/Directions** | R = 64 (per vertex) | N = 128 (per direction, shared across all vertices) |
+| **Per-element cost** | Each vertex traces its own rays independently | All vertices share the same rasterized depth maps |
+| **BVH traversal** | O(log T) per ray (hardware-accelerated) | None -- rasterization is O(1) per triangle per direction |
+| **Multi-layer cost** | Single closest-hit (no extra cost) | O(P) peeling passes per direction |
+| **Scaling with V** | Linear (one thread per vertex) | Linear (one pixel per vertex in result texture) |
+| **Scaling with F** | O(log T) per ray ( BVH hides triangle count) | O(F) per direction (all triangles rasterized) |
+| **Scaling with resolution** | Independent of screen resolution | Depends on texture size (depth peeling resolution) |
+
+**Key insight:** OptiX's per-vertex cost is independent of other vertices (embarrassingly parallel), while VCGlib's spawning camera approach amortizes the cost of rasterizing all triangles across all vertices simultaneously. This is why OptiX wins for moderate vertex counts (the ray tracing overhead is small), but the gap narrows for very large meshes where rasterization becomes more efficient than per-vertex BVH traversal.
 
 ---
 
