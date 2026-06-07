@@ -57,6 +57,25 @@ A thick region (like a torso) will have large SDF values; a thin region (like a 
 
 > **Note:** OptiX timings include the full pipeline: normal computation + BVH build + ray tracing + CSR graph construction + anisotropic smoothing. PyMeshLab timings are raw SDF computation only (no smoothing or normalization).
 
+### Test Settings
+
+| Parameter | OptiX (CUDA) | PyMeshLab GPU (VCGlib) |
+| :--- | :--- | :--- |
+| **Rays per vertex** | 64 | 64 |
+| **Cone angle** | 120 degrees | 150 degrees |
+| **Ray sampling** | Hammersley 2D (quasi-random) | Fibonacci sphere (uniform) |
+| **Compute primitive** | Per-vertex | Per-vertex (`onprimitive=0`) |
+| **Outlier removal** | No | No (`removeoutliers=False`) |
+| **Post-processing** | Log normalization + 3x anisotropic bilateral smoothing | None |
+| **Smoothing sigma spatial** | 2% of bbox diagonal | N/A |
+| **Smoothing sigma range** | 0.1 | N/A |
+| **Normalization** | `log(4 * normalized + 1) / log(5)` | None (raw distance values) |
+| **GPU** | NVIDIA RTX (OptiX RT Cores) | Any GPU with OpenGL 3.3+ |
+| **Timing method** | `std::chrono::high_resolution_clock` | `time.perf_counter()` |
+| **Visualization** | Off (Polyscope disabled) | Off (PyVista disabled) |
+
+> **Note:** The cone angle differs between the two implementations (120 vs 150 degrees). This is the default for each respective library. A wider cone captures more rays from oblique angles, which can affect SDF accuracy on thin structures.
+
 ---
 
 ## SDF via NVIDIA OptiX (Hardware Ray Tracing)
