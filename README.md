@@ -76,50 +76,58 @@ A thick region (like a torso) will have large SDF values; a thin region (like a 
 
 > **Note:** The cone angle differs between the two implementations (120 vs 150 degrees). This is the default for each respective library. A wider cone captures more rays from oblique angles, which can affect SDF accuracy on thin structures.
 
-### GPU Time Complexity Analysis
+### Time Complexity Analysis
 
-#### OptiX (Hardware Ray Tracing)
+Let **V** = number of vertices, **F** = number of faces, **R** = rays per vertex, **N** = number of camera directions, **P** = depth peeling layers, **I** = smoothing iterations, **k** = average neighbors per vertex.
 
-| Stage | Time Complexity | Description |
+#### OptiX (CUDA)
+
+| Stage | Complexity | Explanation |
 | :--- | :--- | :--- |
-| BVH Build | O(T log T) | Build acceleration structure from T triangles using RT Cores |
-| Per-vertex Ray Tracing | O(V × R × log T) | For each of V vertices, trace R rays through BVH (log T traversal) |
-| Weighted Average | O(V × R) | Accumulate distance × weight per vertex |
-| CSR Graph Build | O(F log F) | Extract edges from F faces, sort, deduplicate |
-| Anisotropic Smoothing | O(V × E × I) | I iterations over V vertices with E neighbors each |
-| Normalization | O(V) | Min-max + log compression |
-| **Total** | **O(V × R × log T + F log F + V × E × I)** | Dominated by ray tracing and graph construction |
+| Normal computation | O(V + F) | One pass over faces to accumulate, one pass over vertices to normalize |
+| BVH build | O(F log F) | OptiX builds a bounding volume hierarchy from all triangles |
+| Ray tracing | O(V x R x log F) | Each vertex shoots R rays; each ray traverses the BVH in O(log F) |
+| Weighted average | O(V x R) | Simple accumulation of distance x weight per vertex |
+| Normalization | O(V) | Single min-max pass + log transform |
+| CSR graph build | O(F log F) | Edge extraction O(F), sort O(F log F), unique + CSR O(F) |
+| Anisotropic smoothing | O(V x k x I) | I iterations, each vertex blends with k neighbors |
+| **Total** | **O(V x R x log F + F log F)** | BVH build and ray tracing dominate |
 
-Where: V = vertices, R = rays per vertex (64), T = triangles, F = faces, E = avg edges per vertex, I = smoothing iterations (3)
+#### VCGlib/MeshLab GPU (OpenGL)
 
-#### VCGlib/MeshLab GPU (Spawning Camera + Depth Peeling)
-
-| Stage | Time Complexity | Description |
+| Stage | Complexity | Explanation |
 | :--- | :--- | :--- |
-| Upload to Textures | O(V) | Pack vertex positions and normals into GPU textures |
-| Per-direction Rasterization | O(N × F) | For each of N camera directions, rasterize all F triangles |
-| Depth Peeling | O(N × P × F) | P layers of peeling per direction, each rendering F triangles |
-| SDF Fragment Shader | O(N × V) | For each direction, compute thickness for all V vertices |
-| Additive Blending | O(N × V) | Accumulate results into FBO (free via GPU blending) |
-| Readback | O(V) | Single `glReadPixels` call, divide red by green |
-| **Total** | **O(N × P × F + N × V)** | Dominated by rasterization and depth peeling |
-
-Where: N = camera directions (128), P = peeling layers (10), F = faces, V = vertices
+| Preprocessing | O(V + F) | Normal computation, bounding box, compact arrays |
+| Upload to texture | O(V) | Pack vertex data into RGBA32F textures |
+| For each of N directions: | | |
+| - Spawn camera | O(1) | Set orthographic projection matrix |
+| - Depth peeling | O(F x P) | P layers, each layer renders all visible triangles |
+| - SDF shader | O(V) | Per-vertex depth comparison and weight accumulation |
+| - FBO blend | O(V) | Additive blending into result texture |
+| Readback | O(V) | Single glReadPixels call |
+| **Total** | **O(N x (F x P + V))** | Depth peeling across all directions dominates |
 
 #### Comparison
 
 | Aspect | OptiX | VCGlib/MeshLab GPU |
 | :--- | :--- | :--- |
-| **Dominant term** | V × R × log T | N × P × F |
-| **Rays/Directions** | R = 64 (per vertex) | N = 128 (per direction, shared across all vertices) |
-| **Per-element cost** | Each vertex traces its own rays independently | All vertices share the same rasterized depth maps |
-| **BVH traversal** | O(log T) per ray (hardware-accelerated) | None -- rasterization is O(1) per triangle per direction |
-| **Multi-layer cost** | Single closest-hit (no extra cost) | O(P) peeling passes per direction |
-| **Scaling with V** | Linear (one thread per vertex) | Linear (one pixel per vertex in result texture) |
-| **Scaling with F** | O(log T) per ray ( BVH hides triangle count) | O(F) per direction (all triangles rasterized) |
-| **Scaling with resolution** | Independent of screen resolution | Depends on texture size (depth peeling resolution) |
+| **Asymptotic** | O(V x R x log F) | O(N x F x P) |
+| **With typical values** | O(V x 64 x log F) | O(128 x F x 10) |
+| **Per-element work** | Per-vertex (R independent rays) | Per-face (entire mesh rendered per direction) |
+| **BVH factor** | log F per ray traversal | None (rasterization, no BVH) |
+| **Parallelism model** | One CUDA thread per vertex | One GPU draw call per direction |
+| **Bottleneck** | Ray-BVH intersection (compute-bound) | Rasterization + depth peeling (bandwidth-bound) |
+| **Fixed overhead** | Low (CUDA kernel launch) | High (OpenGL context, texture upload, N draw calls) |
 
-**Key insight:** OptiX's per-vertex cost is independent of other vertices (embarrassingly parallel), while VCGlib's spawning camera approach amortizes the cost of rasterizing all triangles across all vertices simultaneously. This is why OptiX wins for moderate vertex counts (the ray tracing overhead is small), but the gap narrows for very large meshes where rasterization becomes more efficient than per-vertex BVH traversal.
+#### Why OptiX Wins Despite log F Factor
+
+1. **Per-vertex parallelism**: OptiX launches V threads in parallel, each independently shooting R rays. The GPU's RT Cores handle ray-BVH traversal in hardware.
+
+2. **VCGlib's per-direction overhead**: Each of the 128 camera directions requires a full mesh render pass. Even though rasterization is fast, 128 draw calls + depth peeling iterations accumulate significant fixed overhead.
+
+3. **Data transfer**: OptiX uses zero-copy CUDA device pointers (no host-device transfer during computation). VCGlib requires `glReadPixels` to read back the FBO result to the CPU.
+
+4. **Post-processing included**: OptiX's O(V x k x I) smoothing adds negligible cost compared to its O(V x R x log F) ray tracing, while VCGlib has no post-processing at all.
 
 ---
 
