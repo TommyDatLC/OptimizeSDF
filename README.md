@@ -62,7 +62,7 @@ A thick region (like a torso) will have large SDF values; a thin region (like a 
 | Parameter | OptiX (CUDA) | PyMeshLab GPU (VCGlib) |
 | :--- | :--- | :--- |
 | **Rays per vertex** | 64 | 64 |
-| **Cone angle** | 120 degrees | 150 degrees |
+| **Cone angle** | 150 degrees | 150 degrees |
 | **Ray sampling** | Hammersley 2D (quasi-random) | Fibonacci sphere (uniform) |
 | **Compute primitive** | Per-vertex | Per-vertex (`onprimitive=0`) |
 | **Outlier removal** | No | No (`removeoutliers=False`) |
@@ -74,7 +74,7 @@ A thick region (like a torso) will have large SDF values; a thin region (like a 
 | **Timing method** | `std::chrono::high_resolution_clock` | `time.perf_counter()` |
 | **Visualization** | Off (Polyscope disabled) | Off (PyVista disabled) |
 
-> **Note:** The cone angle differs between the two implementations (120 vs 150 degrees). This is the default for each respective library. A wider cone captures more rays from oblique angles, which can affect SDF accuracy on thin structures.
+> **Note:** Both implementations now use the same cone angle (150 degrees) for a fair comparison.
 
 ### Time Complexity Analysis
 

@@ -82,7 +82,7 @@ void initialize()
 
             Model modelOptix(filePath);
             // Chạy tính toán bằng OptiX Shader
-            CaculatingSDFUsingOptix(modelOptix, optixState);
+            CaculatingSDFUsingOptix(modelOptix, optixState,64,150);
 
             // -------------------------------------------------------------
             // HEAT MAP 3: SO SÁNH SỰ KHÁC BIỆT (DIFFERENCE)
