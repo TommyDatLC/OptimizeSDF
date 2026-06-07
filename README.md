@@ -112,7 +112,7 @@ Let **V** = number of vertices, **F** = number of faces, **R** = rays per vertex
 | Aspect | OptiX | VCGlib/MeshLab GPU |
 | :--- | :--- | :--- |
 | **Asymptotic** | O(V x R x log F) | O(N x F x P) |
-| **With typical values** | O(V x 64 x log F) | O(64 x F x P) |
+| **With typical values** | O(V x 64 x log F) | O(64 x F x P), where P scales with model size for accuracy |
 | **Per-element work** | Per-vertex (R independent rays) | Per-face (entire mesh rendered per direction) |
 | **BVH factor** | log F per ray traversal | None (rasterization, no BVH) |
 | **Parallelism model** | One CUDA thread per vertex | One GPU draw call per direction |
