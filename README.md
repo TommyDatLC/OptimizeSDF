@@ -482,13 +482,22 @@ Each camera direction contributes a small piece to the global sum. Additive blen
 
 ## Visual Quality Comparison
 
-Despite the different rendering backends, the visual output remains consistent.
+Each row shows the SDF heat map from both implementations and their absolute difference. Hot colors (red/yellow) indicate larger SDF values (thicker regions), while cool colors (blue) indicate thinner regions.
 
-| Model | NVIDIA OptiX | OpenCL |
-| :--- | :---: | :---: |
-| **Leaf** | <img alt="Screenshot From 2026-05-11 08-47-21" src="https://github.com/user-attachments/assets/d6f3c9bc-2b6d-47df-9361-78406d5db55b" /> | <img alt="image" src="https://github.com/user-attachments/assets/e1fe8ca9-95c1-4d26-ab2b-53b7e776e75d" /> |
-| **Dragon** | <img src="https://github.com/user-attachments/assets/a78a2a2f-85a8-438c-8ee6-1d61890c58ac" width="100%" alt="Optix Dragon"> | <img src="https://github.com/user-attachments/assets/5ff27ab3-062c-4525-bf3b-9c73e8c4f48c" width="100%" alt="OpenCL Dragon"> |
-| **Hand** | <img src="https://github.com/user-attachments/assets/5c8f0d48-7f77-42dc-8967-85adb96dffba" width="100%" alt="Optix Hand"> | <img src="https://github.com/user-attachments/assets/af490257-b130-43ff-bb35-60d8eff5c736" width="100%" alt="OpenCL Hand"> |
+| Model | SDF OptiX | SDF PyMeshLab | Difference |
+| :--- | :---: | :---: | :---: |
+| **112** | <img src="image/112_optix.png" width="100%" alt="112 OptiX"> | <img src="image/112_pymeshlab.png" width="100%" alt="112 PyMeshLab"> | <img src="image/112_diff.png" width="100%" alt="112 Diff"> |
+| **118** | <img src="image/118_optix.png" width="100%" alt="118 OptiX"> | <img src="image/118_pymeshlab.png" width="100%" alt="118 PyMeshLab"> | <img src="image/118_diff.png" width="100%" alt="118 Diff"> |
+| **158** | <img src="image/158_optix.png" width="100%" alt="158 OptiX"> | <img src="image/158_pymeshlab.png" width="100%" alt="158 PyMeshLab"> | <img src="image/158_diff.png" width="100%" alt="158 Diff"> |
+| **181** | <img src="image/181_optix.png" width="100%" alt="181 OptiX"> | <img src="image/181_pymeshlab.png" width="100%" alt="181 PyMeshLab"> | <img src="image/181_diff.png" width="100%" alt="181 Diff"> |
+| **360** | <img src="image/360_optix.png" width="100%" alt="360 OptiX"> | <img src="image/360_pymeshlab.png" width="100%" alt="360 PyMeshLab"> | <img src="image/360_diff.png" width="100%" alt="360 Diff"> |
+| **368** | <img src="image/368_optix.png" width="100%" alt="368 OptiX"> | <img src="image/368_pymeshlab.png" width="100%" alt="368 PyMeshLab"> | <img src="image/368_diff.png" width="100%" alt="368 Diff"> |
+| **369** | <img src="image/369_optix.png" width="100%" alt="369 OptiX"> | <img src="image/369_pymeshlab.png" width="100%" alt="369 PyMeshLab"> | <img src="image/369_diff.png" width="100%" alt="369 Diff"> |
+| **371** | <img src="image/371_optix.png" width="100%" alt="371 OptiX"> | <img src="image/371_pymeshlab.png" width="100%" alt="371 PyMeshLab"> | <img src="image/371_diff.png" width="100%" alt="371 Diff"> |
+| **400** | <img src="image/400_optix.png" width="100%" alt="400 OptiX"> | <img src="image/400_pymeshlab.png" width="100%" alt="400 PyMeshLab"> | <img src="image/400_diff.png" width="100%" alt="400 Diff"> |
+| **76** | <img src="image/76_optix.png" width="100%" alt="76 OptiX"> | <img src="image/76_pymeshlab.png" width="100%" alt="76 PyMeshLab"> | <img src="image/76_diff.png" width="100%" alt="76 Diff"> |
+| **9** | <img src="image/9_optix.png" width="100%" alt="9 OptiX"> | <img src="image/9_pymeshlab.png" width="100%" alt="9 PyMeshLab"> | <img src="image/9_diff.png" width="100%" alt="9 Diff"> |
+| **Leaf** | <img src="image/Leaf_optix.png" width="100%" alt="Leaf OptiX"> | <img src="image/Leaf_pymeshlab.png" width="100%" alt="Leaf PyMeshLab"> | <img src="image/Leaf_diff.png" width="100%" alt="Leaf Diff"> |
 
 ---
 

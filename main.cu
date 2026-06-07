@@ -107,7 +107,7 @@ void initialize()
             // HIỂN THỊ GIAO DIỆN ĐỐI CHIẾU 3D
             // -------------------------------------------------------------
             if (hien_thi_3d) {
-                std::cout << "-> Đang mở cửa sổ Polyscope. Hãy đóng cửa sổ để chạy file tiếp theo...\n";
+                std::cout << "-> Dang mo cua so Polyscope. Hay dong cua so de chay file tiep theo...\n";
                 polyscope::show();
 
                 // RẤT QUAN TRỌNG: Xóa dữ liệu 3D cũ đi sau khi đóng cửa sổ
