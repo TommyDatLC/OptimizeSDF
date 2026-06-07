@@ -202,7 +202,7 @@ This approach runs the entire SDF pipeline on the GPU using CUDA and NVIDIA's ha
 │  └──────────────────────┬───────────────────────────────────┘       │
 │                         ▼                                           │
 │  ┌──────────────────────────────────────────────────────────┐       │
-│  │  Anisotropic Bilateral Smoothing (3 iterations)           │       │
+│  │  Anisotropic Bilateral Smoothing (4 iterations)           │       │
 │  │  For each vertex, blend its SDF value with its neighbors │       │
 │  │  using bilateral weights that consider both spatial       │       │
 │  │  distance and SDF value difference. This smooths noise   │       │
@@ -465,7 +465,7 @@ Each camera direction contributes a small piece to the global sum. Additive blen
 | **Multi-layer Handling** | Single closest-hit per ray (hardware BVH returns first intersection only) | Depth peeling (configurable up to P layers; handles hollow meshes, tori, etc.) |
 | **BVH** | Hardware-accelerated via `optixAccelBuild` (RT Cores) | None -- rasterization-based, no ray tracing structure needed |
 | **Weighting Formula** | `1 / angle_from_cone_axis` (same) | `1 / angle_from_cone_axis` (same) |
-| **Post-processing** | Normalization (log compression) + Anisotropic bilateral smoothing (3 iterations on CSR graph) | None -- raw weighted average only |
+| **Post-processing** | Normalization (log compression) + Anisotropic bilateral smoothing (4 iterations on CSR graph) | None -- raw weighted average only |
 | **Normalization** | Min-max scaling then `log(alpha * x + 1) / log(alpha + 1)` with alpha=4 | None (raw distance values) |
 | **Graph Smoothing** | CSR bilateral filter on GPU: spatial weight + range weight, sigmaSpatial=2% of bbox diagonal, sigmaRange=0.1 | N/A |
 | **False Intersection Removal** | No (all valid ray hits are used) | Yes (checks normal dot product at intersection; skips if ray points away from surface) |
