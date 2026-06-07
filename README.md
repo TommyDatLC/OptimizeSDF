@@ -31,6 +31,34 @@ A thick region (like a torso) will have large SDF values; a thin region (like a 
 
 ---
 
+## Performance Benchmark: PyMeshLab GPU (VCGlib) vs. NVIDIA OptiX
+
+| Model | Vertices | PyMeshLab GPU (s) | OptiX (s) | Faster | Speedup |
+| :--- | :---: | :---: | :---: | :--- | :---: |
+| 360.obj | 2,200 | 0.3228 | 0.0019 | OptiX | 171.0x |
+| 9.obj | 2,639 | 0.4359 | 0.0084 | OptiX | 51.6x |
+| 400.obj | 3,703 | 0.4004 | 0.0121 | OptiX | 33.2x |
+| 76.obj | 5,923 | 0.5027 | 0.0106 | OptiX | 47.6x |
+| 181.obj | 7,242 | 0.3128 | 0.0039 | OptiX | 80.6x |
+| 118.obj | 9,153 | 0.3141 | 0.0047 | OptiX | 66.3x |
+| 368.obj | 11,202 | 0.3217 | 0.0163 | OptiX | 19.7x |
+| 112.obj | 13,628 | 0.8288 | 0.0229 | OptiX | 36.1x |
+| 369.obj | 13,606 | 0.3772 | 0.0517 | OptiX | 7.3x |
+| 158.obj | 14,587 | 0.3450 | 0.0069 | OptiX | 50.0x |
+| 371.obj | 14,599 | 0.3097 | 0.0583 | OptiX | 5.3x |
+| Leaf.obj | 24,866 | 0.3827 | 0.1219 | OptiX | 3.1x |
+
+### Technical Summary
+
+- **OptiX is faster across all models**, ranging from **3.1x to 171x** speedup.
+- **PyMeshLab GPU has a ~0.3s base overhead** regardless of model size, due to OpenGL context initialization, texture upload, and iterating over 128 camera directions.
+- **OptiX scales better** -- its ray tracing time grows proportionally with vertex count, while PyMeshLab's overhead is dominated by fixed-cost OpenGL operations.
+- **OptiX includes post-processing** (normalization + anisotropic smoothing) that PyMeshLab does not, making the comparison even more favorable for OptiX.
+
+> **Note:** OptiX timings include the full pipeline: normal computation + BVH build + ray tracing + CSR graph construction + anisotropic smoothing. PyMeshLab timings are raw SDF computation only (no smoothing or normalization).
+
+---
+
 ## SDF via NVIDIA OptiX (Hardware Ray Tracing)
 
 This approach runs the entire SDF pipeline on the GPU using CUDA and NVIDIA's hardware-accelerated ray tracing (RT Cores). Every stage -- from normal computation to ray tracing to post-processing -- executes on the GPU with zero CPU involvement.
@@ -377,36 +405,6 @@ Each camera direction contributes a small piece to the global sum. Additive blen
 | **Memory Model** | GPU VRAM (zero-copy via CUDA device pointers) | GPU VRAM (textures + FBOs) + CPU readback via `glReadPixels` |
 | **Dependencies** | NVIDIA OptiX SDK, CUDA Toolkit | OpenGL, GLEW, Qt, MeshLab common library |
 | **Hardware Requirement** | NVIDIA RTX GPU (RT Cores required for BVH acceleration) | Any GPU supporting OpenGL 3.3+ with FP32 texture and FBO support |
-
----
-
-## Performance Benchmark: PyMeshLab GPU (VCGlib) vs. NVIDIA OptiX
-
-| Model | Vertices | PyMeshLab GPU (s) | OptiX (s) | Faster | Speedup |
-| :--- | :---: | :---: | :---: | :--- | :---: |
-| 360.obj | 2,200 | 0.3228 | 0.0019 | OptiX | 171.0x |
-| 9.obj | 2,639 | 0.4359 | 0.0084 | OptiX | 51.6x |
-| 400.obj | 3,703 | 0.4004 | 0.0121 | OptiX | 33.2x |
-| 76.obj | 5,923 | 0.5027 | 0.0106 | OptiX | 47.6x |
-| 181.obj | 7,242 | 0.3128 | 0.0039 | OptiX | 80.6x |
-| 118.obj | 9,153 | 0.3141 | 0.0047 | OptiX | 66.3x |
-| 368.obj | 11,202 | 0.3217 | 0.0163 | OptiX | 19.7x |
-| 112.obj | 13,628 | 0.8288 | 0.0229 | OptiX | 36.1x |
-| 369.obj | 13,606 | 0.3772 | 0.0517 | OptiX | 7.3x |
-| 158.obj | 14,587 | 0.3450 | 0.0069 | OptiX | 50.0x |
-| 371.obj | 14,599 | 0.3097 | 0.0583 | OptiX | 5.3x |
-| Leaf.obj | 24,866 | 0.3827 | 0.1219 | OptiX | 3.1x |
-| xyzrgb_dragon | 500,079 | 1.1711 | 0.5219 | OptiX | 2.2x |
-
-### Technical Summary
-
-- **OptiX is faster across all models**, ranging from **2.2x to 171x** speedup.
-- **PyMeshLab GPU has a ~0.3s base overhead** regardless of model size, due to OpenGL context initialization, texture upload, and iterating over 128 camera directions.
-- **OptiX scales better** -- its ray tracing time grows proportionally with vertex count, while PyMeshLab's overhead is dominated by fixed-cost OpenGL operations.
-- **The gap narrows for very large models** (dragon: 2.2x) because OptiX's BVH build and ray tracing cost becomes significant, while PyMeshLab's per-direction cost also scales.
-- **OptiX includes post-processing** (normalization + anisotropic smoothing) that PyMeshLab does not, making the comparison even more favorable for OptiX.
-
-> **Note:** OptiX timings include the full pipeline: normal computation + BVH build + ray tracing + CSR graph construction + anisotropic smoothing. PyMeshLab timings are raw SDF computation only (no smoothing or normalization).
 
 ---
 
