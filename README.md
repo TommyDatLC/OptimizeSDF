@@ -490,14 +490,12 @@ Each row shows the SDF heat map from both implementations and their absolute dif
 | **118** | <img src="image/118_optix.png" width="100%" alt="118 OptiX"> | <img src="image/118_pymeshlab.png" width="100%" alt="118 PyMeshLab"> | <img src="image/118_diff.png" width="100%" alt="118 Diff"> |
 | **158** | <img src="image/158_optix.png" width="100%" alt="158 OptiX"> | <img src="image/158_pymeshlab.png" width="100%" alt="158 PyMeshLab"> | <img src="image/158_diff.png" width="100%" alt="158 Diff"> |
 | **181** | <img src="image/181_optix.png" width="100%" alt="181 OptiX"> | <img src="image/181_pymeshlab.png" width="100%" alt="181 PyMeshLab"> | <img src="image/181_diff.png" width="100%" alt="181 Diff"> |
-| **360** | <img src="image/360_optix.png" width="100%" alt="360 OptiX"> | <img src="image/360_pymeshlab.png" width="100%" alt="360 PyMeshLab"> | <img src="image/360_diff.png" width="100%" alt="360 Diff"> |
 | **368** | <img src="image/368_optix.png" width="100%" alt="368 OptiX"> | <img src="image/368_pymeshlab.png" width="100%" alt="368 PyMeshLab"> | <img src="image/368_diff.png" width="100%" alt="368 Diff"> |
 | **369** | <img src="image/369_optix.png" width="100%" alt="369 OptiX"> | <img src="image/369_pymeshlab.png" width="100%" alt="369 PyMeshLab"> | <img src="image/369_diff.png" width="100%" alt="369 Diff"> |
 | **371** | <img src="image/371_optix.png" width="100%" alt="371 OptiX"> | <img src="image/371_pymeshlab.png" width="100%" alt="371 PyMeshLab"> | <img src="image/371_diff.png" width="100%" alt="371 Diff"> |
 | **400** | <img src="image/400_optix.png" width="100%" alt="400 OptiX"> | <img src="image/400_pymeshlab.png" width="100%" alt="400 PyMeshLab"> | <img src="image/400_diff.png" width="100%" alt="400 Diff"> |
 | **76** | <img src="image/76_optix.png" width="100%" alt="76 OptiX"> | <img src="image/76_pymeshlab.png" width="100%" alt="76 PyMeshLab"> | <img src="image/76_diff.png" width="100%" alt="76 Diff"> |
 | **9** | <img src="image/9_optix.png" width="100%" alt="9 OptiX"> | <img src="image/9_pymeshlab.png" width="100%" alt="9 PyMeshLab"> | <img src="image/9_diff.png" width="100%" alt="9 Diff"> |
-| **Leaf** | <img src="image/Leaf_optix.png" width="100%" alt="Leaf OptiX"> | <img src="image/Leaf_pymeshlab.png" width="100%" alt="Leaf PyMeshLab"> | <img src="image/Leaf_diff.png" width="100%" alt="Leaf Diff"> |
 
 ---
 
