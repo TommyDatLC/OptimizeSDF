@@ -452,34 +452,6 @@ Each camera direction contributes a small piece to the global sum. Additive blen
 
 ---
 
-## Detailed Comparison
-
-| Aspect | OptiX (this project) | VCGlib/MeshLab GPU |
-|--------|---------------------|-------------------|
-| **Compute Platform** | NVIDIA RTX GPU (CUDA + OptiX RT Cores) | Any GPU with OpenGL 3.3+ (FBOs, FP32 textures, shaders) |
-| **Ray Tracing Method** | Hardware BVH traversal via `optixTrace` | Rasterization + depth peeling |
-| **Granularity** | Per-vertex | Per-vertex or per-face (configurable) |
-| **Ray Sampling** | Hammersley 2D (low-discrepancy quasi-random) | Fibonacci sphere (uniform on sphere) |
-| **Default Rays per Point** | 64 | 128 |
-| **Default Cone Angle** | 120 degrees | 120 degrees |
-| **Multi-layer Handling** | Single closest-hit per ray (hardware BVH returns first intersection only) | Depth peeling (configurable up to P layers; handles hollow meshes, tori, etc.) |
-| **BVH** | Hardware-accelerated via `optixAccelBuild` (RT Cores) | None -- rasterization-based, no ray tracing structure needed |
-| **Weighting Formula** | `1 / angle_from_cone_axis` (same) | `1 / angle_from_cone_axis` (same) |
-| **Post-processing** | Normalization (log compression) + Anisotropic bilateral smoothing (4 iterations on CSR graph) | None -- raw weighted average only |
-| **Normalization** | Min-max scaling then `log(alpha * x + 1) / log(alpha + 1)` with alpha=4 | None (raw distance values) |
-| **Graph Smoothing** | CSR bilateral filter on GPU: spatial weight + range weight, sigmaSpatial=2% of bbox diagonal, sigmaRange=0.1 | N/A |
-| **False Intersection Removal** | No (all valid ray hits are used) | Yes (checks normal dot product at intersection; skips if ray points away from surface) |
-| **Outlier Removal** | Optional (commented out in code) | Optional (shader-based supersampling of depth buffer; takes median of nearby depth values) |
-| **FBOs for Depth Peeling** | N/A (hardware ray tracing, no rasterization) | 3 FBOs in circular buffer to avoid z-fighting between layers |
-| **Result Accumulation** | Direct per-vertex computation in CUDA kernel | Additive blending into FBO: red = sum(distance x weight), green = sum(weight); division on CPU readback |
-| **Vertex-to-Pixel Mapping** | N/A (each CUDA thread owns one vertex) | 1:1 mapping: vertex `i` stored at texture pixel `i`; SDF shader looks up vertex data by pixel index |
-| **Language/Runtime** | CUDA C++ (compiled to PTX, JIT-loaded by OptiX) | OpenGL GLSL shaders + C++ host code |
-| **Memory Model** | GPU VRAM (zero-copy via CUDA device pointers) | GPU VRAM (textures + FBOs) + CPU readback via `glReadPixels` |
-| **Dependencies** | NVIDIA OptiX SDK, CUDA Toolkit | OpenGL, GLEW, Qt, MeshLab common library |
-| **Hardware Requirement** | NVIDIA RTX GPU (RT Cores required for BVH acceleration) | Any GPU supporting OpenGL 3.3+ with FP32 texture and FBO support |
-
----
-
 ## Visual Quality Comparison
 
 Each row shows the SDF heat map from both implementations and their absolute difference. Hot colors (red/yellow) indicate larger SDF values (thicker regions), while cool colors (blue) indicate thinner regions.
