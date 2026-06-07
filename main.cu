@@ -46,7 +46,7 @@ void initialize()
     std::cout << "Bắt đầu quét thư mục: " << folderPath << "\n";
 
     // Đổi thành true để hiển thị Polyscope cửa sổ 3D
-    bool hien_thi_3d = true;
+    bool hien_thi_3d = false;
 
     // Lặp qua tất cả các file trong thư mục
     for (const auto& entry : fs::directory_iterator(folderPath)) {
@@ -63,26 +63,45 @@ void initialize()
             // HEAT MAP 1: TẢI KẾT QUẢ SDF TỪ PYMESHLAB (PYTHON)
             // -------------------------------------------------------------
 
-            Model modelOptix(filePath);
+            Model modelPy(filePath);
             // Dự đoán tên file .sdf sinh ra bởi Python
             std::string base_name = entry.path().stem().string(); // Lấy tên không đuôi (VD: 112)
             std::string parent_dir = entry.path().parent_path().string(); // Lấy thư mục chứa nó (VD: Model)
             std::string sdfFilePath = parent_dir + "/" + base_name + "_pymeshlab.sdf";
 
             // Đọc file PyMeshLab SDF và gán vào modelPy
-            LoadPyHeatMap(modelOptix, sdfFilePath);
-            modelOptix.SetShowHeatMap(true); // Bật hiển thị Heat Map cho PyMeshLab
+            LoadPyHeatMap(modelPy, sdfFilePath);
+            modelPy.SetShowHeatMap(true); // Bật hiển thị Heat Map cho PyMeshLab
 
             // Đăng ký modelPy lên Polyscope với tên riêng biệt
-            modelOptix.AddToScene("PyMeshLab_SDF_Model", false);
+            modelPy.AddToScene("PyMeshLab_SDF_Model", false);
 
             // -------------------------------------------------------------
             // HEAT MAP 2: TÍNH TOÁN SDF BẰNG C++ OPTIX (HARDWARE RAY TRACING)
             // -------------------------------------------------------------
 
-
+            Model modelOptix(filePath);
             // Chạy tính toán bằng OptiX Shader
             CaculatingSDFUsingOptix(modelOptix, optixState);
+
+            // -------------------------------------------------------------
+            // HEAT MAP 3: SO SÁNH SỰ KHÁC BIỆT (DIFFERENCE)
+            // -------------------------------------------------------------
+            Model modelDiff(filePath);
+            const auto& attrPy = modelPy.GetVertexAttributes();
+            const auto& attrOptix = modelOptix.GetVertexAttributes();
+
+            if (attrPy.size() > 0 && attrPy.size() == attrOptix.size()) {
+                for (size_t i = 0; i < attrPy.size(); i++) {
+                    double diff = std::abs(attrOptix[i] - attrPy[i]);
+                    modelDiff.AddHeatMapVertexForPreviewEngine(i, diff);
+                }
+                modelDiff.SetShowHeatMap(true);
+                modelDiff.AddToScene("Difference_SDF_Model", false);
+            } else {
+                std::cout << "[CẢNH BÁO] Không thể tính Difference vì số lượng đỉnh của PyMeshLab (" << attrPy.size() 
+                          << ") và Optix (" << attrOptix.size() << ") không khớp hoặc bằng 0!\n";
+            }
 
             // -------------------------------------------------------------
             // HIỂN THỊ GIAO DIỆN ĐỐI CHIẾU 3D
