@@ -1,0 +1,12 @@
+build/
+*.exe
+*.obj
+*.lib
+*.pdb
+*.csv
+CMakeFiles/
+cmake_install.cmake
+CMakeCache.txt
+*.sln
+*.vcxproj
+*.vcxproj.filters
