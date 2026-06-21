@@ -1,0 +1,85 @@
+\documentclass[12pt,a4paper]{report}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english,vietnamese]{babel}
+\selectlanguage{english}
+\AtBeginDocument{%
+  \renewcommand{\chaptername}{Chapter}%
+  \renewcommand{\contentsname}{Table of Contents}%
+  \renewcommand{\listfigurename}{List of Figures}%
+  \renewcommand{\listtablename}{List of Tables}%
+  \renewcommand{\bibname}{References}%
+  \renewcommand{\figurename}{Figure}%
+  \renewcommand{\tablename}{Table}%
+}
+\usepackage{graphicx}
+\usepackage{geometry}
+\usepackage{parskip}
+\usepackage{hyperref}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{titlesec}
+\usepackage{float}
+\usepackage{tikz}
+\titleformat{\subsection}{\normalfont\normalsize\bfseries}{\thesubsection}{1em}{}
+
+\geometry{
+    top=2.5cm,
+    bottom=2.5cm,
+    left=3cm,
+    right=2.5cm
+}
+
+\begin{document}
+
+% COVER PAGE
+\input{cover_page}
+
+% CHAPTER 1: INTRODUCTION
+\input{chapter1}
+
+% CHAPTER 2: MATERIALS AND TECHNOLOGIES
+\input{chapter2}
+
+% =========================================================================
+% REFERENCES
+% =========================================================================
+\newpage
+\addcontentsline{toc}{chapter}{References}
+\begin{thebibliography}{9}
+
+\bibitem{shapira2008}
+L. Shapira, A. Shamir, D. Cohen-Or,
+\newblock ``Consistent Mesh Partitioning and Skeletonization using the Shape Diameter Function,''
+\newblock \emph{Visual Computer}, vol.~24, pp.~249--259, 2008.
+
+\bibitem{kamenicky2014}
+J. Kamenick\'{y},
+\newblock ``Parallelization of Shape Diameter Function Computation using OpenCL,''
+\newblock \emph{Proceedings of CESCG}, 204, 2014.
+
+\bibitem{chen2018}
+S. Chen, T. Liu, Z. Shu, S. Xin, Y. He, C. Tu,
+\newblock ``Fast and robust shape diameter function,''
+\newblock \emph{PLoS ONE}, vol.~13, no.~1, e0190666, 2018.
+
+\bibitem{vcglib}
+VCG Library,
+\newblock ``Visualization and Computer Graphics Library,''
+\newblock \url{https://github.com/cnr-isti-vclab/vcglib}.
+
+\bibitem{optix}
+NVIDIA Corporation,
+\newblock ``NVIDIA OptiX Ray Tracing Engine,''
+\newblock \url{https://developer.nvidia.com/optix}.
+
+\bibitem{cuda}
+NVIDIA Corporation,
+\newblock ``CUDA C Programming Guide,''
+\newblock \url{https://docs.nvidia.com/cuda/cuda-c-programming-guide/}.
+
+\end{thebibliography}
+
+\end{document}

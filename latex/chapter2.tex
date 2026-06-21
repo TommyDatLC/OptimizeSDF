@@ -1,0 +1,93 @@
+\chapter{Materials and Technologies}
+
+This chapter introduces the core technologies used to implement the high-performance SDF computation pipeline. We describe the NVIDIA OptiX ray tracing framework, the CUDA parallel computing platform, and the dataset of 3D models used for evaluation.
+
+\section{NVIDIA OptiX}
+
+NVIDIA OptiX \cite{optix} is a high-level framework for ray tracing on NVIDIA GPUs. It provides:
+
+\begin{itemize}
+    \item \textbf{Hardware-accelerated ray tracing}: OptiX leverages NVIDIA RT Cores (available on Turing, Ampere, and newer architectures) to accelerate ray-triangle intersection tests in hardware.
+    \item \textbf{Bounding Volume Hierarchy (BVH)}: OptiX automatically builds and maintains BVH acceleration structures, enabling $O(\log F)$ ray-triangle intersection queries.
+    \item \textbf{Programmable shaders}: Custom ray generation, miss, and closest-hit programs written in CUDA.
+    \item \textbf{Zero-copy computation}: Data remains on the GPU throughout the pipeline, eliminating host-device transfer overhead.
+\end{itemize}
+
+The OptiX pipeline for SDF computation consists of:
+\begin{enumerate}
+    \item \textbf{Module creation}: Compiling CUDA shader code to PTX and creating an OptiX module.
+    \item \textbf{Program groups}: Defining ray generation, miss, and hit group programs.
+    \item \textbf{Pipeline linking}: Connecting program groups into a traceable pipeline.
+    \item \textbf{Shader Binding Table (SBT)}: Mapping shaders to geometry.
+    \item \textbf{BVH construction}: Building the acceleration structure from triangle mesh data.
+    \item \textbf{Launch}: Executing the ray tracing kernel across all vertices.
+\end{enumerate}
+
+\section{CUDA}
+
+CUDA (Compute Unified Device Architecture) \cite{cuda} is NVIDIA's parallel computing platform. In this project, CUDA is used for:
+
+\begin{itemize}
+    \item \textbf{Kernel execution}: Launching massively parallel kernels for normal computation, SDF normalization, and anisotropic smoothing.
+    \item \textbf{Memory management}: Allocating and managing GPU memory for mesh data, intermediate results, and output buffers.
+    \item \textbf{CUB library}: Using CUB's device-wide primitives for radix sort and unique operations when building the mesh adjacency graph (CSR format).
+\end{itemize}
+
+The key CUDA kernels implemented in this project include:
+\begin{itemize}
+    \item \texttt{GPUComputeBoundingBox}: Computes the mesh bounding box using atomic min/max operations.
+    \item \texttt{GPUComputeSDFMinMax} / \texttt{GPUApplySDFNormalization}: Min-max normalization with logarithmic compression.
+    \item \texttt{GPUGenerateEdges} / \texttt{GPUExtractCSR}: Constructs the Compressed Sparse Row adjacency graph.
+    \item \texttt{AnisotropicSmoothingKernel}: Bilateral smoothing kernel operating on the mesh graph.
+\end{itemize}
+
+\section{Technology Selection}
+
+The choice of OptiX + CUDA over alternative technologies was driven by:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Criterion} & \textbf{OptiX + CUDA} & \textbf{OpenGL (VCGlib)} \\
+\midrule
+Ray tracing & Hardware RT Cores & Software rasterization \\
+BVH traversal & $O(\log F)$ hardware & None (depth peeling) \\
+GPU requirement & NVIDIA RTX & Any GPU with OpenGL 3.3+ \\
+Post-processing & Full GPU pipeline & None \\
+Parallelism model & Per-vertex & Per-direction \\
+\bottomrule
+\end{tabular}
+\caption{Comparison of OptiX vs.\ OpenGL approaches}
+\label{tab:tech_compare}
+\end{table}
+
+\section{Dataset}
+
+The evaluation dataset consists of 13 triangular mesh models in OBJ format, stored in the \texttt{Model/} directory. These models vary in complexity and size:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lrr@{}}
+\toprule
+\textbf{Model} & \textbf{Vertices} & \textbf{Description} \\
+\midrule
+360.obj & 2,200 & Simple object \\
+9.obj & 2,639 & Simple object \\
+400.obj & 3,703 & Medium complexity \\
+76.obj & 5,923 & Medium complexity \\
+181.obj & 7,242 & Medium complexity \\
+118.obj & 9,153 & High complexity \\
+368.obj & 11,202 & High complexity \\
+112.obj & 13,628 & High complexity \\
+369.obj & 13,606 & High complexity \\
+158.obj & 14,587 & High complexity \\
+371.obj & 14,599 & High complexity \\
+Leaf.obj & 24,866 & Highest complexity \\
+\bottomrule
+\end{tabular}
+\caption{Dataset models and vertex counts}
+\label{tab:dataset}
+\end{table}
+
+The models were selected to cover a range of vertex counts (from 2,200 to 24,866) to evaluate how each implementation scales with mesh complexity.

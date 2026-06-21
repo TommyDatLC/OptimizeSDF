@@ -1,0 +1,132 @@
+\chapter{Introduction}
+
+This chapter provides the theoretical foundation for the Shape Diameter Function (SDF), a fundamental geometric descriptor in 3D Computer Vision. We define the SDF and its mathematical formulation, discuss its role in analyzing 3D objects, survey existing GPU-accelerated approaches, and state the objectives of this thesis.
+
+\section{Context}
+
+The Shape Diameter Function (SDF) is a scalar function defined on the surface of a 3D triangular mesh that measures the local diameter of the object's volume in the neighborhood of each point. Introduced by Shapira et al.\ \cite{shapira2008}, the SDF captures intrinsic volumetric information: given a point $p$ on the mesh surface with outward normal $\vec{\mathbf{n}}$, the SDF value represents the local thickness of the object at that point.
+
+The SDF is computed by shooting a cone of rays from $p$ inward (centered on the negative normal $-\vec{\mathbf{n}}$), measuring how far each ray travels before hitting the mesh on the opposite side, and computing a weighted average of those distances:
+
+\begin{equation}
+    \text{SDF}(p) = \frac{\sum_{i=1}^{R} d_i \cdot w_i}{\sum_{i=1}^{R} w_i}
+\end{equation}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[scale=0.7]
+    % Draw mesh surface (cross-section)
+    \draw[thick, fill=gray!20] (-4,0) to[out=30,in=180] (-1.5,1.5) to[out=0,in=150] (0,1.8) to[out=30,in=180] (1.5,1.5) to[out=0,in=150] (4,0) -- cycle;
+    
+    % Point p on surface
+    \filldraw[red] (0,1.8) circle (2pt) node[above right] {$p$};
+    
+    % Normal vector (outward)
+    \draw[blue, thick, ->] (0,1.8) -- (0,3.0) node[above] {$\vec{\mathbf{n}}$};
+    
+    % Inverted normal (inward)
+    \draw[blue, thick, ->, dashed] (0,1.8) -- (0,0.6) node[below] {$-\vec{\mathbf{n}}$};
+    
+    % Cone boundary lines (dashed)
+    \draw[dashed] (0,1.8) -- (-2.0,-0.5);
+    \draw[dashed] (0,1.8) -- (2.0,-0.5);
+    
+    % Cone of rays (solid orange)
+    \draw[orange, thick, ->] (0,1.8) -- (-1.0,-0.2);
+    \draw[orange, thick, ->] (0,1.8) -- (-0.4,0.0);
+    \draw[orange, thick, ->] (0,1.8) -- (0.4,0.0);
+    \draw[orange, thick, ->] (0,1.8) -- (1.0,-0.2);
+    
+    % Distance annotation (along one ray)
+    \draw[red, <->] (0.5,1.6) -- (0.5,0.1) node[midway, right] {$d_i$};
+    
+    % Cone angle arc
+    \draw[<->] (-1.0,0.6) arc[start angle=210,end angle=330,radius=1.0] node[midway, below=2pt] {$\theta_{cone}$};
+    
+    % Labels
+    \node[below] at (0,-0.8) {Mesh cross-section};
+    \node[orange, right] at (1.2,-0.2) {Rays};
+\end{tikzpicture}
+\caption{Illustration of the SDF computation. A cone of rays is shot from point $p$ inward, and the weighted average of travel distances gives the local thickness.}
+\label{fig:sdf_concept}
+\end{figure}
+
+where $d_i$ is the travel distance of ray $i$, $w_i = 1/\theta_i$ is the weight based on the angle $\theta_i$ between the ray and the cone axis, and $R$ is the total number of rays (commonly 64).
+
+A thick region (such as a torso) yields large SDF values, while a thin region (such as fingers or ears) yields small values. This makes the SDF invariant to rigid body transformations and robust to non-rigid pose deformations.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.6\textwidth]{images/112_sdf_heatmap.png}
+\caption{Example SDF heat map visualization on a 3D mesh model. Hot colors (red/yellow) indicate thicker regions and cool colors (blue) indicate thinner regions.}
+\label{fig:sdf_heatmap}
+\end{figure}
+
+\section{Why SDF: Role in 3D Object Analysis}
+
+The SDF serves as a fundamental geometric descriptor in 3D Computer Vision and Geometry Processing. Its primary role is to compute the thickness of 3D objects, which enables a wide range of applications:
+
+\begin{itemize}
+    \item \textbf{Mesh segmentation}: Partitioning 3D models into meaningful parts based on thickness variations. The SDF provides a natural boundary between thick and thin regions.
+    \item \textbf{Skeletonization}: Extracting the medial axis or skeletal structure of a shape by following ridges in the SDF field.
+    \item \textbf{Shape matching and retrieval}: Identifying similar shapes across databases using thickness-based signatures that are pose-oblivious.
+    \item \textbf{Character animation}: Rigging and skinning by understanding the volumetric properties of character models.
+\end{itemize}
+
+Despite its importance, computing the SDF efficiently on large meshes remains challenging. The original CPU-based algorithms are computationally expensive, especially for high-resolution models with millions of vertices. This has motivated the development of GPU-accelerated approaches that leverage parallel computing to achieve significant speedups.
+
+\section{Survey of Existing Work}
+
+Several approaches have been developed for computing the SDF on the GPU:
+
+\subsection{PyMeshLab GPU (VCGlib)}
+\small
+
+PyMeshLab provides a GPU-accelerated SDF filter based on the VCGlib library \cite{vcglib}. This approach uses OpenGL rasterization with a ``spawning camera'' technique:
+\begin{enumerate}
+    \item Virtual orthographic cameras are placed at $N$ directions uniformly distributed on a sphere using Fibonacci spiral sampling.
+    \item For each direction, the mesh is rendered using depth peeling to capture multiple layers of the surface.
+    \item A fragment shader computes the thickness between front and back depth layers at each vertex position.
+    \item Results from all directions are accumulated using additive blending into a framebuffer object (FBO).
+\end{enumerate}
+
+While this approach works on any GPU with OpenGL 3.3+, it suffers from fixed overhead due to OpenGL context initialization, texture uploads, and the need for multiple draw calls (one per camera direction), resulting in a baseline overhead of approximately 0.3 seconds regardless of model size.
+
+\normalsize
+\subsection{Kamenick\'{y} -- OpenCL Parallelization}
+\small
+
+Kamenick\'{y} \cite{kamenicky2014} presented a parallel SDF computation using OpenCL. Their work demonstrated the potential of GPU acceleration for SDF computation by parallelizing the ray casting process. Key contributions include:
+\begin{itemize}
+    \item Parallel implementation of ray generation and traversal using OpenCL.
+    \item Generalization of the algorithm to support non-manifold meshes.
+    \item Significant speedups over CPU-based implementations.
+\end{itemize}
+
+However, OpenCL lacks the hardware-specific optimizations available in NVIDIA's CUDA and OptiX ecosystems, particularly for ray tracing operations. The approach does not leverage dedicated hardware acceleration structures such as RT Cores.
+
+\normalsize
+\subsection{Fast and Robust Shape Diameter Function}
+\small
+
+Chen et al.\ \cite{chen2018} proposed a robust and efficient SDF computation method based on offset surfaces. Their approach addresses three key limitations of the original SDF: sensitivity to noise, dependence on accurate normal vectors, and computational cost. Key contributions include:
+\begin{itemize}
+    \item \textbf{Offset-surface SDF}: Instead of shooting rays directly from the mesh surface, the method defines SDF on the offset surface (exterior envelope of spheres centered at each vertex), yielding robust normal estimates.
+    \item \textbf{Single-ray computation}: At each point, only a single ray is needed instead of tens of rays, achieving approximately 10$\times$ speedup.
+    \item \textbf{Robustness to defects}: Supports point clouds and meshes with noise, gaps, and cracks by leveraging the watertight property of the offset surface.
+\end{itemize}
+
+\normalsize
+
+\section{Objective}
+
+The objective of this thesis is to optimize the computation of the Shape Diameter Function using High Performance Computing techniques. Specifically, this project aims to:
+
+\begin{enumerate}
+    \item Implement a high-performance SDF computation pipeline using NVIDIA OptiX for hardware-accelerated ray tracing with RT Cores.
+    \item Compare the OptiX-based approach against the existing PyMeshLab GPU implementation (VCGlib/OpenGL).
+    \item Analyze the performance characteristics, scalability, and accuracy of both approaches across a diverse set of 3D models.
+    \item Demonstrate the advantages of hardware ray tracing over rasterization-based methods for SDF computation.
+\end{enumerate}
+
+Having established the theoretical foundation and research objectives, the following chapter presents the technologies and tools employed in this work, including the NVIDIA OptiX framework, CUDA programming model, and the evaluation dataset.
