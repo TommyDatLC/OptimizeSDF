@@ -1,0 +1,204 @@
+\chapter{Methodology}
+
+This chapter describes the overall pipeline for computing the Shape Diameter Function (SDF) using NVIDIA OptiX hardware-accelerated ray tracing. We present the system architecture, detail each processing stage, and explain the data flow from input mesh to final visualization. The proposed SDF computation pipeline consists of ten stages organized into four execution domains: input parsing, normal computation, OptiX ray tracing, and post-processing. Figure~\ref{fig:pipeline} shows the complete data flow.
+
+\begin{figure}[ht]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+    >=stealth,
+    stage/.style={
+        rectangle,
+        rounded corners=2pt,
+        draw=black!50,
+        fill=#1,
+        text width=7.0cm,
+        minimum height=1.5cm,
+        align=center,
+        font=\fontsize{18}{22}\selectfont,
+        inner sep=1pt
+    },
+    domain/.style={
+        rectangle,
+        rounded corners=3pt,
+        draw=#1!80!black,
+        fill=#1!8,
+        line width=0.4pt,
+        inner sep=4pt
+    },
+    arr/.style={
+        ->,
+        -{stealth[length=1.5mm,width=1.2mm]}
+    }
+]
+
+% --- CPU: just the stage box, no outer domain box ---
+\node[stage=blue!20, anchor=north] (load) at (0, 0) {\bfseries Read OBJ Model};
+
+% --- GPU Compute: just the stage box, no outer domain box ---
+\node[stage=orange!15, anchor=north] (normal) at (8.0cm, 0) {\bfseries Calculate Vertex Normals};
+
+% --- OptiX Domain (with outer box) ---
+\node[domain=red, minimum width=8.0cm, minimum height=12.0cm, anchor=north] (optix_box) at (16.5cm, 0) {};
+\node[anchor=north, font=\fontsize{18}{22}\selectfont\bfseries, text=red!70!black] at ([yshift=-1pt]optix_box.north) {OptiX Ray Tracing};
+
+\node[stage=red!15, anchor=north] (sbt) at ([yshift=-0.8cm]optix_box.north) {\bfseries Build Shader Binding Table};
+\node[stage=red!15, anchor=north] (bvh) at ([yshift=-0.4cm]sbt.south) {\bfseries Build BVH};
+\node[stage=red!15, anchor=north] (raygen) at ([yshift=-0.4cm]bvh.south) {\bfseries Generate Cone Rays};
+\node[stage=red!15, anchor=north] (trace) at ([yshift=-0.4cm]raygen.south) {\bfseries Trace Rays};
+\node[stage=red!15, anchor=north] (rawsdf) at ([yshift=-0.4cm]trace.south) {\bfseries Calculate Weighted SDF};
+
+\draw[arr, red!50!black] (sbt) -- (bvh);
+\draw[arr, red!50!black] (bvh) -- (raygen);
+\draw[arr, red!50!black] (raygen) -- (trace);
+\draw[arr, red!50!black] (trace) -- (rawsdf);
+
+% --- GPU Post-Processing Domain (with outer box) ---
+\node[domain=green!60!black, minimum width=8.0cm, minimum height=12.0cm, anchor=north] (post_box) at (25.0cm, 0) {};
+\node[anchor=north, font=\fontsize{18}{22}\selectfont\bfseries, text=green!40!black] at ([yshift=-1pt]post_box.north) {GPU Post-Processing};
+
+\node[stage=green!15, anchor=north] (norm) at ([yshift=-0.8cm]post_box.north) {\bfseries Normalize SDF};
+\node[stage=green!15, anchor=north] (csr) at ([yshift=-0.4cm]norm.south) {\bfseries Build Adjacency Graph};
+\node[stage=green!15, anchor=north] (smooth) at ([yshift=-0.4cm]csr.south) {\bfseries Smooth SDF};
+
+\draw[arr, green!40!black] (norm) -- (csr);
+\draw[arr, green!40!black] (csr) -- (smooth);
+
+% --- Inter-domain arrows ---
+\draw[arr, black!60] (load.east) -- (normal.west);
+\draw[arr, black!60] (normal.east) -- (optix_box.west);
+\draw[arr, black!60] (optix_box.east) -- (post_box.west);
+
+% --- Input/Output ---
+\node[font=\fontsize{18}{22}\selectfont\bfseries, left=1.5cm of load.west, anchor=east] (input) {Input: OBJ};
+\draw[arr, densely dashed, black!40] (input) -- (load.west);
+
+\node[font=\fontsize{18}{22}\selectfont\bfseries, right=1.5cm of post_box.east, anchor=west] (output) {Output: SDF};
+\draw[arr, densely dashed, black!40] (post_box.east) -- (output);
+
+\end{tikzpicture}%
+}
+\caption{Overall OptiX SDF computation pipeline.}
+\label{fig:pipeline}
+\end{figure}
+
+Figure~\ref{fig:pipeline} illustrates the complete data flow of the proposed SDF computation pipeline. The workflow progresses from reading the OBJ model (blue) through calculating vertex normals (orange), OptiX hardware-accelerated ray tracing (red), to GPU post-processing (green). The pipeline consists of ten stages organized into four execution domains, each connected by arrows indicating the data flow from input mesh to final visualization.
+
+\section{Read OBJ Model}
+
+The pipeline begins by reading triangular mesh data from OBJ files. The \texttt{Model} class parses vertex positions ($\mathbf{v} \in \mathbb{R}^3$) and face indices ($f \in \mathbb{N}^3$) from the text format, converting from 1-based to 0-based indexing. The parsed vertex and face arrays are packed into row-major GPU matrices: a vertex matrix of shape $(|V| \times 3)$ where each row stores the $x$, $y$, $z$ coordinates of one vertex, and a face index matrix of shape $(|F| \times 3)$ where each row stores the three vertex indices of one triangle, using unsigned integers to match OptiX's \texttt{uint3} binary layout. These matrices are transferred to GPU memory once and reused throughout the pipeline.
+
+\section{Vertex Normals}
+
+With the mesh data loaded onto the GPU, the next step is to compute vertex normals. A vertex normal is a unit vector that represents the average direction of the surface at a vertex, computed by accumulating the normals of all adjacent faces. Vertex normals are required for the cone ray tracing stage, as they define the orientation of the cone axis for each vertex. Vertex normals are computed on the GPU in two kernel launches. In the first kernel (\texttt{GPUNormalCaculation}), each thread processes one face: it reads the three vertex positions of the triangle, computes two edge vectors, and calculates the cross product. The cross product of two edges of a triangle is proportional to the area of that face and points in the direction of the face normal. This cross product is then accumulated into each of the three vertices of the face using \texttt{atomicAdd}, which allows concurrent threads to safely add to the same memory location. The result is a per-vertex buffer containing the sum of area-weighted face normals for all faces adjacent to each vertex. In the second kernel (\texttt{GPUNormalizeVertexNormal}), each thread normalizes one vertex's accumulated normal to unit length. Degenerate vertices (those with zero-length normals due to isolated or collinear faces) receive a fallback normal of $(0, 0, 1)$. The area-weighting ensures that large faces contribute proportionally more to the vertex normal than small faces, producing a smoother and more accurate normal field.
+
+For a triangle with vertices $v_0$, $v_1$, $v_2$, the edge vectors are:
+
+\begin{equation}
+    \vec{e}_1 = v_1 - v_0, \qquad \vec{e}_2 = v_2 - v_0
+\end{equation}
+
+The area-weighted face normal is the cross product of these edges:
+
+\begin{equation}
+    \vec{n}_f = \vec{e}_1 \times \vec{e}_2
+\end{equation}
+
+The magnitude $|\vec{n}_f|$ equals twice the area of the triangle, so larger faces naturally contribute more weight. Each face normal is accumulated into its three vertices using atomic addition:
+
+\begin{equation}
+    \vec{N}_{v_j} = \sum_{f \in \mathcal{F}(v_j)} \vec{n}_f, \qquad j = 0, 1, 2
+\end{equation}
+
+where $\mathcal{F}(v_j)$ is the set of all faces adjacent to vertex $v_j$. The final vertex normal is obtained by normalization:
+
+\begin{equation}
+    \hat{\mathbf{n}}_v = \frac{\vec{N}_v}{|\vec{N}_v|}, \qquad \text{or} \qquad (0, 0, 1) \quad \text{if } |\vec{N}_v| = 0
+\end{equation}
+
+\section{Shader Binding Table}
+
+With the mesh geometry and normals prepared, the OptiX ray tracing pipeline can be configured. The first component is the Shader Binding Table, which maps shaders to geometry.
+
+In traditional rasterization, rendering is sequential: you select a shader, load the object's data, and issue a draw command. With ray tracing, however, the situation is far less predictable. A ray may hit a glass sphere (requiring reflection), a brick wall (requiring shadow casting), or miss all geometry entirely. The GPU cannot know in advance what a ray will intersect, so it needs a fast lookup table to determine which shader to execute and what data to use for each intersection. This lookup table is the Shader Binding Table (SBT).
+
+The SBT is a contiguous buffer on the GPU, divided into Shader Records. Each Shader Record consists of two components: a Shader ID (a 32-byte header that points to the compiled shader code in GPU memory) and Local Root Arguments (per-object data such as texture IDs, color values, reflectivity, or pointers to vertex buffers). This design allows different objects to share the same shader code while using completely different data, enabling per-material variation without duplicating shaders.
+
+For SDF computation, the SBT is minimal because all triangles in the mesh share the same material and shader. A single SBT entry per program group (ray generation, closest-hit, miss) is sufficient. No per-geometry SBT data is required, since the only per-ray data is the hit distance, which is returned through the payload mechanism rather than through SBT entries.
+
+\section{BVH Construction}
+
+To determine what a ray hits in a scene with millions of triangles, the Bounding Volume Hierarchy (BVH) is used as the acceleration structure. If the SBT is the lookup table that answers the question ``which shader should execute when a ray hits something?'' then the BVH answers the question ``what did the ray just hit?''
+
+In a scene with millions of triangles, brute-force ray-triangle intersection testing is computationally infeasible. Without acceleration, a single ray would need to be tested against every triangle in the scene, making real-time ray tracing impossible. The BVH solves this problem using a divide-and-conquer approach.
+
+The BVH organizes the triangle mesh into a tree of Axis-Aligned Bounding Boxes (AABBs). At the top level, a single bounding box encloses the entire mesh. This box is recursively subdivided into smaller boxes, each containing a subset of the triangles, until the leaf nodes contain individual triangles. Traversal begins at the root: if a ray misses the root bounding box, the entire scene is discarded immediately. If it hits, the ray descends into the child boxes, recursively testing each one. This process continues until the ray reaches the leaf nodes, where the actual ray-triangle intersection tests are performed. Through this hierarchy, the number of intersection tests is reduced from $O(F)$ to $O(\log F)$, where $F$ is the number of faces.
+
+For each model, a Geometry Acceleration Structure (GAS) is built from the triangle mesh using OptiX's \texttt{optixAccelBuild}. The build configuration enables bidirectional hits via \texttt{OPTIX\_GEOMETRY\_FLAG\_DISABLE\_TRIANGLE\_FACE\_CULLING}, allowing rays to intersect triangles from both sides. This is essential for SDF computation where rays are shot inward from the surface and must be able to hit the interior side of triangles. Compaction is permitted through \texttt{OPTIX\_BUILD\_FLAG\_ALLOW\_COMPACTION}, enabling the BVH to be compacted after construction to reduce memory footprint. Single-level traversal is enforced via \texttt{OPTIX\_TRAVERSABLE\_GRAPH\_FLAG\_ALLOW\_SINGLE\_GAS}, avoiding the overhead of instance-level acceleration structures. The BVH construction is performed by RT Cores in dedicated hardware, offloading the work from the CUDA cores.
+
+\section{OptiX Pipeline Setup}
+
+With the SBT configured, the OptiX pipeline itself must be initialized. The OptiX ray tracing pipeline is initialized once and reused for each model. It consists of a module creation step, program group definitions, and pipeline linking.
+
+The CUDA shader code (\texttt{SDFOptix.cu}) defines three shader programs that are registered with OptiX as function pointers in program memory: a ray generation program, a closest-hit program, and a miss program.
+
+The ray generation program (\texttt{\_\_raygen\_\_sdf\_cone}) is invoked once per ray. For each vertex $p$ with outward normal $\vec{\mathbf{n}}$, a local tangent frame is first constructed: the cone axis is $-\vec{\mathbf{n}}$ (pointing inward), and orthogonal tangent and bitangent vectors are computed via cross products. Then, $R = 64$ ray directions are generated using random sampling uniformly distributed within the solid angle of a cone. Each sample $(u, v) \in [0,1]^2$ is mapped to a cosine-weighted hemisphere cap centered on $-\vec{\mathbf{n}}$, with a cone half-angle $\theta_{\mathrm{cone}} = 75^\circ$:
+
+\begin{equation}
+    z = \cos\theta_{\max} + (1 - \cos\theta_{\max}) \cdot u, \quad \phi = 2\pi v
+\end{equation}
+
+The direction is transformed from local cone space to world space using the tangent frame. Each ray is traced through the BVH with \texttt{optixTrace}, using $t_{\min} = 10^{-4}$ (to avoid self-intersection) and $t_{\max} = 10^{16}$. On closest hit, the parametric travel distance $t_{\max}$ is returned as the payload. The raygen program then computes the angle $\theta_i$ between the ray direction and the cone axis using $\theta_i = \arccos(\vec{d} \cdot (-\vec{\mathbf{n}}))$, clamped to a minimum of $0.001$ radians to prevent division by zero. An inverse-angle weight $w_i = 1/\theta_i$ is assigned to each hit, so that rays closer to the cone axis contribute more to the final SDF value while grazing-angle rays are downweighted. Rays that miss the mesh are discarded.
+
+The closest-hit program (\texttt{\_\_closesthit\_\_sdf}) is called when a ray intersects a triangle. It returns the parametric hit distance $t_{\max}$ as the payload, which represents the distance the ray traveled before hitting the surface.
+
+The miss program sets the payload to $-1$. This program is called when a ray misses all geometry and exits into empty space. Since SDF computation only requires the hit distance of rays that actually intersect the mesh surface, rays that miss carry no useful information. The $-1$ value serves as a sentinel to distinguish misses from valid hits (which always have positive distances).
+
+Any-hit programs are disabled via \texttt{OPTIX\_RAY\_FLAG\_DISABLE\_ANYHIT}, which is passed to \texttt{optixTrace}. In NVIDIA's ray tracing architecture, BVH traversal is accelerated entirely in hardware by RT Cores. Without this flag, every time a ray intersects a triangle, the hardware must pause traversal and invoke an any-hit shader in software to determine whether the intersection is valid. This software-hardware switching causes significant performance degradation due to thread divergence and shader overhead. By disabling any-hit programs, RT Cores can operate at full throughput without interruption, as all intersections are assumed to be valid. This is appropriate for SDF computation because the mesh surface is fully opaque and every intersection is a genuine hit.
+
+The pipeline is configured with \texttt{maxTraceDepth} = 1, limiting each ray to a single bounce. This is sufficient because each ray only needs to find the first intersection with the mesh surface. One payload value is allocated to store the hit distance, which is the only data returned from the trace.
+
+\section{Raw SDF Computation}
+
+After the ray tracing stage completes on the GPU via OptiX, the per-ray results are passed to a CUDA kernel for aggregation. Each vertex $p$ has a set of $R_p$ valid hit distances $\{d_i\}$ and corresponding weights $\{w_i\}$, where each weight is the inverse angle $w_i = 1/\theta_i$ from the cone axis. The CUDA kernel computes the raw SDF value as the weighted average of all hit distances for each vertex:
+
+\begin{equation}
+    \mathrm{SDF}(p) = \frac{\sum_{i=1}^{R_p} d_i \cdot w_i}{\sum_{i=1}^{R_p} w_i}
+\end{equation}
+
+This produces a single scalar value per vertex representing the local thickness of the mesh at that point.
+
+Several edge cases are handled during this aggregation. Rays that miss the mesh entirely are marked with a payload of $-1$ during ray tracing and are discarded before the weighted average is computed; they do not contribute to the SDF value. If all rays for a vertex miss (which can happen for vertices on very thin or degenerate geometry), the vertex is assigned a fallback SDF value of zero. Vertices with degenerate normals (zero-length or near-zero area faces) are assigned a fallback normal of $(0, 0, 1)$ during the normal computation stage and receive the default SDF value to prevent division by zero in the weighted average.
+
+\section{Normalization}
+
+After calculating the SDF raw value, the SDF values must first be normalized to a consistent range. The raw SDF values are normalized to $[0, 1]$ using min-max normalization followed by logarithmic compression. First, the global minimum and maximum are computed using atomic operations. Then, for each vertex:
+
+\begin{equation}
+    \hat{v} = \frac{\mathrm{SDF}(p) - \mathrm{SDF}_{\min}}{\mathrm{SDF}_{\max} - \mathrm{SDF}_{\min}}, \qquad
+    v_{\mathrm{norm}} = \frac{\log(\alpha \hat{v} + 1)}{\log(\alpha + 1)}
+\end{equation}
+
+where $\alpha = 4.0$. The logarithmic compression preserves detail in thin regions (low SDF) while compressing the dynamic range of thick regions.
+
+\section{Adjacency Graph Construction}
+
+To reduce noise from the normalized SDF values, we apply anisotropic bilateral smoothing. However, it requires neighbor vertex information. Therefore, we represent the graph structure of a 3D model as a matrix or array. The native approach is to use an adjacency matrix: a $|V| \times |V|$ 2D array where entry $[A][B] = 1$ if vertex $A$ is connected to vertex $B$. However, the adjacency matrix has a critical drawback: for a mesh with thousands of vertices but only a few neighbors per vertex, the matrix is overwhelmingly zeros, wasting $O(|V|^2)$ memory. An adjacency list avoids this waste but scatters data across memory, causing cache misses on the GPU. CSR solves both problems: it compresses out the zeros while keeping all data in contiguous 1D arrays to optimize memory.
+
+A CSR graph consists of two arrays. The column indices array stores the neighbor IDs of all vertices concatenated into a single contiguous array. The row pointers array, of length $|V| + 1$, records where each vertex's neighbor list begins and ends within the column indices array. For vertex $v$, its neighbors are stored in positions \texttt{colIndices[rowPointers[v]]} through \texttt{colIndices[rowPointers[v+1] - 1]}. This structure enables efficient, cache-friendly traversal of the mesh graph on the GPU.
+
+The mesh adjacency graph is built on the GPU in three steps. First, edge generation produces 6 directed edges per face (both directions for each of 3 edges), packed as 64-bit integers with \texttt{(src << 32) | dst}. Since adjacent triangles share edges, the same edge appears in multiple faces (e.g., two triangles sharing edge AB both generate A→B and B→A). Second, CUB's \texttt{DeviceRadixSort} sorts edges lexicographically, and \texttt{DeviceSelect::Unique} removes these duplicates so each edge is stored only once. Third, a kernel iterates over the sorted unique edges to build the CSR representation: offset array \texttt{d\_nbrOffsets} and neighbor list \texttt{d\_nbrLists}.
+
+\section{Anisotropic Bilateral Smoothing}
+
+While the graph matrix representation is completed, the graph is ready for smoothing. A smoothing filter is needed to produce clean, visually coherent thickness maps. However, standard Gaussian smoothing blurs across sharp thickness boundaries, erasing important features such as the edges of thin structures or the transition between thick and thin regions. Anisotropic bilateral filtering solves this problem by combining spatial proximity with value similarity: it smooths regions where nearby vertices have similar SDF values while preserving sharp transitions where SDF values differ significantly.
+
+The bilateral filter operates on the mesh graph for 3 iterations. For each vertex $p$ with position $\mathbf{x}_p$ and SDF value $v_p$, the filtered value is computed as: A smoothing filter is needed to produce clean, visually coherent thickness maps. However, standard Gaussian smoothing blurs across sharp thickness boundaries, erasing important features such as the edges of thin structures or the transition between thick and thin regions. Anisotropic bilateral filtering solves this problem by combining spatial proximity with value similarity: it smooths regions where nearby vertices have similar SDF values while preserving sharp transitions where SDF values differ significantly.
+
+The bilateral filter operates on the mesh graph for 3 iterations. For each vertex $p$ with position $\mathbf{x}_p$ and SDF value $v_p$, the filtered value is computed as:
+
+\begin{equation}
+    v_p^{\mathrm{out}} = \frac{\sum_{q \in \mathcal{N}(p)} \exp\!\left(-\frac{\|\mathbf{x}_p - \mathbf{x}_q\|^2}{2\sigma_s^2}\right) \exp\!\left(-\frac{(v_p - v_q)^2}{2\sigma_r^2}\right) v_q}{\sum_{q \in \mathcal{N}(p)} \exp\!\left(-\frac{\|\mathbf{x}_p - \mathbf{x}_q\|^2}{2\sigma_s^2}\right) \exp\!\left(-\frac{(v_p - v_q)^2}{2\sigma_r^2}\right)}
+\end{equation}
+
+where $\mathcal{N}(p)$ is the set of neighboring vertices in the CSR graph. The filter uses two weight functions. The spatial weight $\exp(-\|\mathbf{x}_p - \mathbf{x}_q\|^2 / 2\sigma_s^2)$ favors nearby vertices, with $\sigma_s = 0.02 \cdot d_{\mathrm{bbox}}$ (2\% of the bounding box diagonal) controlling the spatial extent of smoothing. The range weight $\exp(-(v_p - v_q)^2 / 2\sigma_r^2)$ favors vertices with similar SDF values, with $\sigma_r = 0.1$ preventing blending across sharp thickness boundaries. This combination ensures that smoothing occurs within uniform-thickness regions while preserving features such as the edges of thin structures. The filtering is implemented as a CUDA kernel that iterates over the CSR neighbor list for each vertex, accumulating weighted sums in parallel.

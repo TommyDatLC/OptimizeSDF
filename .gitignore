@@ -1,2 +1,9 @@
 /media/
 /Visualization/PythonVisulization
+
+# LaTeX build files
+latex/*.aux
+latex/*.log
+latex/*.out
+latex/*.pdf
+latex/build_*.txt

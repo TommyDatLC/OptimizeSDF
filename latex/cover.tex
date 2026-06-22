@@ -1,7 +1,7 @@
 \documentclass[12pt,a4paper]{report}
 \usepackage[utf8]{inputenc}
-\usepackage[T1]{fontenc}
-\usepackage[english,vietnamese]{babel}
+\usepackage[T5]{fontenc}
+\usepackage[english]{babel}
 \selectlanguage{english}
 \AtBeginDocument{%
   \renewcommand{\chaptername}{Chapter}%
@@ -13,8 +13,12 @@
   \renewcommand{\tablename}{Table}%
 }
 \usepackage{graphicx}
+\usepackage[table]{xcolor}
 \usepackage{geometry}
-\usepackage{parskip}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt}
+\usepackage{amsmath}
+\usepackage{amssymb}
 \usepackage{hyperref}
 \usepackage{amsmath}
 \usepackage{booktabs}
@@ -23,6 +27,7 @@
 \usepackage{titlesec}
 \usepackage{float}
 \usepackage{tikz}
+\usetikzlibrary{positioning, arrows.meta}
 \titleformat{\subsection}{\normalfont\normalsize\bfseries}{\thesubsection}{1em}{}
 
 \geometry{
@@ -42,6 +47,12 @@
 
 % CHAPTER 2: MATERIALS AND TECHNOLOGIES
 \input{chapter2}
+
+% CHAPTER 3: METHODOLOGY
+\input{chapter3}
+
+% CHAPTER 4: EXPERIMENT RESULTS
+\input{chapter4}
 
 % =========================================================================
 % REFERENCES
