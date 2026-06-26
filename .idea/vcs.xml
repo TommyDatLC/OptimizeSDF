@@ -3,10 +3,19 @@
   <component name="VcsDirectoryMappings">
     <mapping directory="" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/cmake-build-default-visual-studio/_deps/polyscope-src" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/cmake-build-default-visual-studio/_deps/polyscope-src/deps/glfw" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/cmake-build-default-visual-studio/_deps/polyscope-src/deps/glm" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/cmake-build-default-visual-studio/_deps/polyscope-src/deps/imgui/ImGuizmo" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/cmake-build-default-visual-studio/_deps/polyscope-src/deps/imgui/imgui" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/cmake-build-default-visual-studio/_deps/polyscope-src/deps/imgui/implot" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/deps/glfw" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/deps/glm" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/deps/happly" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/deps/imgui/ImGuizmo" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/deps/imgui/imgui" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/deps/imgui/implot" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/fast_robust_sdf/build/_deps/polyscope-src" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/fast_robust_sdf/build/_deps/polyscope-src/deps/glfw" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/fast_robust_sdf/build/_deps/polyscope-src/deps/glm" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/fast_robust_sdf/build/_deps/polyscope-src/deps/happly" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/fast_robust_sdf/build/_deps/polyscope-src/deps/imgui/ImGuizmo" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/fast_robust_sdf/build/_deps/polyscope-src/deps/imgui/imgui" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/fast_robust_sdf/build/_deps/polyscope-src/deps/imgui/implot" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/tmp/vcglib" vcs="Git" />
   </component>
 </project>

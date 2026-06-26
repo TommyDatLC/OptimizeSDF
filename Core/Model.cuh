@@ -21,6 +21,7 @@ private:
 
 public:
     Model(std::string filename);
+    ~Model();
     void ReadFromObjFile(std::string filename);
 
     Matrix<float> &GetVertexMatrix();
@@ -30,8 +31,11 @@ public:
     void SetVertexMatrix(Matrix<float> &newVertex);
     void SaveObjFile(std::string filename);
     void AddToScene(std::string name = "model", bool displayNormal = true);
-    void UpdateNormal();
+    void UpdateNormal(cudaStream_t stream = 0);
     void AddHeatMapVertexForPreviewEngine(int index, double value);
+    const std::vector<double>& GetVertexAttributes() const;
+    int GetVertexCount() const { return vertex.size(); }
+    int GetFaceCount() const { return faces.size(); }
     void SetShowHeatMap(bool show);
 };
 

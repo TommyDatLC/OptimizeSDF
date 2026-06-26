@@ -39,7 +39,7 @@ inline __device__ __host__ float3 normalize(float3 v) {
 }
 
 inline __device__ float3 operator-(const float3& a, const float3& b) {
-    return float3(a.x - b.x, a.y - b.y, a.z - b.z );
+    return make_float3(a.x - b.x, a.y - b.y, a.z - b.z );
 
 }
 #endif

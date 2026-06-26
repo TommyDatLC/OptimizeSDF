@@ -18,6 +18,13 @@ Model::Model(std::string filename) {
     ReadFromObjFile(filename);
 }
 
+Model::~Model() {
+    if (cacheVertexMatrix) { delete cacheVertexMatrix; cacheVertexMatrix = nullptr; }
+    if (cacheIndicesMatrix) { delete cacheIndicesMatrix; cacheIndicesMatrix = nullptr; }
+    if (vertexNormalMatrix) { delete vertexNormalMatrix; vertexNormalMatrix = nullptr; }
+    if (faceNormalMatrix) { delete faceNormalMatrix; faceNormalMatrix = nullptr; }
+}
+
 void Model::ReadFromObjFile(std::string filename) {
     std::ifstream file(filename);
     if (!file.is_open()) throw std::runtime_error("Lỗi: Không thể mở file");
@@ -88,11 +95,13 @@ Matrix<unsigned int>& Model::GetVertexIndicesMatrix() {
     return *cacheIndicesMatrix;
 }
 
-void Model::UpdateNormal() {
+void Model::UpdateNormal(cudaStream_t stream) {
+    if (faces.size() == 0 || vertex.size() == 0) return;
+
     if (vertexNormalMatrix == nullptr) {
         vertexNormalMatrix = new Matrix<float>(vertex.size(), 3, nullptr);
     }
-    cudaMemset(vertexNormalMatrix->getDevicePtr(), 0, vertexNormalMatrix->GetSize());
+    cudaMemsetAsync(vertexNormalMatrix->getDevicePtr(), 0, vertexNormalMatrix->GetSize(), stream);
 
     // Đảm bảo dữ liệu đã nằm trên GPU
     GetVertexMatrix().CopyToDevice();
@@ -105,7 +114,7 @@ void Model::UpdateNormal() {
     std::cout << "[DEBUG] Cấu hình Kernel (Faces): Grid = " << gridSizeFaces << ", Block = " << blockSize << "\n";
 
     // Ép kiểu trực tiếp lấy con trỏ Raw đưa vào Kernel
-    GPUNormalCaculation<<<gridSizeFaces, blockSize>>>(
+    GPUNormalCaculation<<<gridSizeFaces, blockSize, 0, stream>>>(
         (const float3*)GetVertexMatrix().getDevicePtr(),
         (const uint3*)GetVertexIndicesMatrix().getDevicePtr(),
         faces.size(),
@@ -114,11 +123,14 @@ void Model::UpdateNormal() {
 
     int gridSizeVerts = (vertex.size() + blockSize - 1) / blockSize;
     std::cout << "[DEBUG] Cấu hình Kernel (Vertices): Grid = " << gridSizeVerts << ", Block = " << blockSize << "\n";
-    GPUNormalizeVertexNormal<<<gridSizeVerts, blockSize>>>(
+    GPUNormalizeVertexNormal<<<gridSizeVerts, blockSize, 0, stream>>>(
         (float3*)vertexNormalMatrix->getDevicePtr(),
         vertex.size()
     );
-    cudaDeviceSynchronize();
+    
+    if (stream == 0) {
+        cudaDeviceSynchronize();
+    }
     
     vertexNormalMatrix->CopyToHost();
     if (vertex.size() > 0) {
@@ -139,6 +151,10 @@ void Model::AddHeatMapVertexForPreviewEngine(int index, double value) {
         vertexAttributes.resize(vertex.size(), 0.0);
     }
     vertexAttributes[index] = value;
+}
+
+const std::vector<double>& Model::GetVertexAttributes() const {
+    return vertexAttributes;
 }
 
 void Model::SetShowHeatMap(bool show) {

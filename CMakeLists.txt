@@ -4,8 +4,11 @@ cmake_minimum_required(VERSION 3.24)
 project(OptimizeSDF LANGUAGES C CXX CUDA)
 
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS}")
-set(CMAKE_CUDA_STANDARD 20)
+set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CXX_STANDARD 20)
+
+# Tìm CUDAToolkit để lấy đường dẫn include chính xác
+find_package(CUDAToolkit REQUIRED)
 
 if (MSVC)
     add_compile_options("$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/Zc:preprocessor>")
@@ -39,8 +42,14 @@ add_executable(OptimizeSDF
 )
 add_library(OptixShaders OBJECT src/Optix/SDFOptix.cu)
 
+# Ưu tiên CUDA Toolkit include path trước PythonMiniConda để tránh xung đột cublas_api.h
+target_include_directories(OptimizeSDF BEFORE PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
+
 # 2. Bật cờ PTX Compilation: Báo cho NVCC biết chỉ dịch ra PTX rồi dừng lại
 set_property(TARGET OptixShaders PROPERTY CUDA_PTX_COMPILATION ON)
+
+# 2b. Bật Fast Math CHỈ cho OptixShaders (PTX Shader trên RT Core)
+# target_compile_options(OptixShaders PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--use_fast_math>)
 
 # 3. Đảm bảo Shader này đọc được các file header của OptiX và thư mục Core
 target_include_directories(OptixShaders PRIVATE
@@ -72,4 +81,4 @@ target_link_libraries(OptimizeSDF
 # ==============================================================================
 # BƯỚC 3: CÁC THAO TÁC KHÁC
 # ==============================================================================
-file(COPY "Model" DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/Debug)
+file(COPY "Model" DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/Debug)

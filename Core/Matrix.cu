@@ -18,6 +18,14 @@ Matrix<T>::Matrix(const int input_height,
 }
 
 template <typename T>
+Matrix<T>::~Matrix() {
+    if (isOwned) {
+        if (hostMemory) { delete[] hostMemory; hostMemory = nullptr; }
+        if (deviceMemory) { cudaFree(deviceMemory); deviceMemory = nullptr; }
+    }
+}
+
+template <typename T>
 void Matrix<T>::mul(const Matrix<T> &A,const Matrix<T> &B, T **device_dest) {
     T alpha = 1;
     T beta = 0;

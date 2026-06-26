@@ -38,6 +38,40 @@
             border-radius: 20px;
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
+        #bg-toggle {
+            position: absolute;
+            top: 25px;
+            right: 25px;
+            z-index: 20;
+            background: rgba(0, 0, 0, 0.6);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+        #bg-toggle:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        #grid-toggle {
+            position: absolute;
+            top: 25px;
+            right: 140px;
+            z-index: 20;
+            background: rgba(0, 0, 0, 0.6);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+        #grid-toggle:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
         #math-formula {
             position: absolute;
             top: 30px;
@@ -88,6 +122,8 @@
     </script>
 </head>
 <body>
+<button id="grid-toggle">🔲 Grid: OFF</button>
+<button id="bg-toggle">🌙 Dark</button>
 <div id="math-formula"></div>
 <div id="h-label">1</div>
 <div id="theta-label"></div>
@@ -108,7 +144,37 @@
     // ==========================================
     const scene = new THREE.Scene();
     const gridHelper = new THREE.GridHelper(20, 20, 0x444444, 0x222222);
+    gridHelper.visible = false;
     scene.add(gridHelper);
+
+    // Grid toggle
+    let gridVisible = false;
+    const gridToggle = document.getElementById('grid-toggle');
+    gridToggle.addEventListener('click', () => {
+        gridVisible = !gridVisible;
+        gridHelper.visible = gridVisible;
+        gridToggle.textContent = gridVisible ? '🔲 Grid: ON' : '🔲 Grid: OFF';
+    });
+
+    // Background toggle
+    let isDark = true;
+    const bgToggle = document.getElementById('bg-toggle');
+    bgToggle.addEventListener('click', () => {
+        isDark = !isDark;
+        if (isDark) {
+            document.body.style.backgroundColor = '#080808';
+            scene.background = null;
+            gridHelper.material[0].color.setHex(0x444444);
+            gridHelper.material[1].color.setHex(0x222222);
+            bgToggle.textContent = '🌙 Dark';
+        } else {
+            document.body.style.backgroundColor = '#ffffff';
+            scene.background = new THREE.Color(0xffffff);
+            gridHelper.material[0].color.setHex(0xcccccc);
+            gridHelper.material[1].color.setHex(0xdddddd);
+            bgToggle.textContent = '☀️ Light';
+        }
+    });
 
     const coneInitialPos = new THREE.Vector3(0, 0, 0);
 

@@ -20,6 +20,7 @@ struct alignas(8) Params {
     OptixTraversableHandle bvhHandle;
     int raysPerPoint;
     float coneAngleRad;
+    float2 hammersleyUVs[128];
 };
 
 template <typename T>

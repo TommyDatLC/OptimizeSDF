@@ -9,10 +9,10 @@
 // Tối ưu hóa: Ép kiểu trực tiếp con trỏ Row-Major thành float3 và uint3
 // =========================================================================
 __global__ inline void GPUNormalCaculation(
-    const float3* vertices,
-    const uint3* indices,
+    const float3* __restrict__ vertices,
+    const uint3* __restrict__ indices,
     int numFaces,
-    float3* pointsNormal)
+    float3* __restrict__ pointsNormal)
 {
     int faceIdx = blockIdx.x * blockDim.x + threadIdx.x;
     if (faceIdx >= numFaces) return;

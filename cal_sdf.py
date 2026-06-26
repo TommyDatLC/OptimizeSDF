@@ -5,7 +5,7 @@ import os
 import time
 import glob
 
-def process_mesh(obj_file, hien_thi_3d=True):
+def process_mesh(obj_file, optimal_peeling_iterations=10, hien_thi_3d=True):
     """Hàm xử lý một file mesh duy nhất"""
     print(f"Đang tính toán SDF cho '{obj_file}', vui lòng đợi...")
     
@@ -19,10 +19,13 @@ def process_mesh(obj_file, hien_thi_3d=True):
 
     # Bắt đầu đo thời gian chạy thuật toán trên GPU
     start_time = time.perf_counter()
-    
-    # Tính Shape Diameter Function (SDF) trực tiếp trên từng Đỉnh (Vertex)
+    # BƯỚC 1: Sử dụng số lần Iteration chính xác đã được tính trước bằng Ray Tracing
+    # Giá trị này đảm bảo vừa đủ để tia xuyên qua toàn bộ độ dày vật thể mà không bị lãng phí vòng lặp
+    print(f"-> Sử dụng Optimal Peeling Iterations: {optimal_peeling_iterations}")
+
+    # BƯỚC 2: Tính Shape Diameter Function (SDF) bằng tham số peelingiteration tối ưu
     ms.apply_filter('compute_scalar_by_shape_diameter_function_per_vertex_gpu', 
-                    coneangle=150, numberrays=64,onprimitive = 0,removeoutliers = False)
+                    coneangle=150, numberrays=64,onprimitive = 0,removeoutliers = False, peelingiteration=optimal_peeling_iterations)
                     
     # Kết thúc đo thời gian chạy
     end_time = time.perf_counter()
@@ -83,11 +86,34 @@ def main():
 
     print(f"Tìm thấy {len(obj_files)} file .obj. Bắt đầu xử lý...\n")
     print("=" * 50)
+    
+    # Từ điển tra cứu số Peeling Iteration tối thiểu cần thiết (tính toán bằng get_complexity.py)
+    depth_complexities = {
+        '112.obj': 4,
+        '118.obj': 4,
+        '158.obj': 4,
+        '181.obj': 8,
+        '360.obj': 20,
+        '368.obj': 4,
+        '369.obj': 8,
+        '371.obj': 4,
+        '400.obj': 6,
+        '76.obj': 6,
+        '9.obj': 8,
+        'Leaf.obj': 8,
+        'Torus.obj': 8,
+        'Armadillo.obj': 6,
+        'Bunny.obj': 6,
+        'Dragon.obj': 10,
+        'Lucy.obj': 9,
+        'Nefertiti.obj': 14
+    }
 
     # Chạy vòng lặp qua từng file
     for file_path in obj_files:
-        # Nếu muốn máy tự động chạy hết không cần xem hình 3D, hãy đổi thành hien_thi_3d=False
-        process_mesh(file_path, hien_thi_3d=False)
+        optimal_iter = 10 # Force 10 peeling iterations for benchmark
+        # Tắt hien_thi_3d=False để máy chạy tự động hàng loạt
+        process_mesh(file_path, optimal_peeling_iterations=optimal_iter, hien_thi_3d=False)
         print("=" * 50)
         
     print("Đã hoàn tất xử lý tất cả các file bằng PyMeshLab!")

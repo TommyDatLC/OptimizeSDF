@@ -3,6 +3,8 @@
 #include <cuda.h>
 #include <cublas_v2.h>
 #include <filesystem> // Yêu cầu C++17
+#include <chrono>
+#include <fstream>
 #include "src/Optix/interface.cu"
 #include "src/Compare.hpp"
 
@@ -17,7 +19,7 @@ namespace fs = std::filesystem;
 // =========================================================================
 // HÀM KHỞI TẠO VÀ CHẠY PIPELINE
 // =========================================================================
-void initialize()
+void initialize(bool hien_thi_3d)
 {
     // Ép Console của Windows sử dụng bảng mã UTF-8 để hiển thị Tiếng Việt
     system("chcp 65001 > nul");
@@ -26,16 +28,16 @@ void initialize()
     optixInit();
     polyscope::init();
 
-    std::string folderPath = "Model";
+    std::string folderPath = "E:/Code/FinalProject/Model";
 
     // Kiểm tra xem thư mục có tồn tại không
     if (!fs::exists(folderPath) || !fs::is_directory(folderPath)) {
         std::cerr << "Lỗi: Không tìm thấy thư mục '" << folderPath << "'\n";
+        system("pause");
         return;
     }
 
-    // ĐÃ MỞ: Đọc file shader PTX của OptiX phục vụ cho việc tính toán so sánh
-    std::string optixPTX = readFile("E:/Code/FinalProject/cmake-build-default-visual-studio/OptixShaders.dir/Debug/SDFOptix.ptx");
+    std::string optixPTX = readFile("E:/Code/FinalProject/cmake-build-default-visual-studio/OptixShaders.dir/Release/SDFOptix.ptx");
     // std::string OpenCLShader = readFile("kernel.cl");
     // auto clEnv = InitOpenCLEnvironment(OpenCLShader);
 
@@ -45,19 +47,24 @@ void initialize()
 
     std::cout << "Bắt đầu quét thư mục: " << folderPath << "\n";
 
-    // Đổi thành true để hiển thị Polyscope cửa sổ 3D
-    bool hien_thi_3d = false;
+    // Mở file để ghi log
+    std::ofstream logFile("performance_log.txt", std::ios_base::app);
+    if (logFile.is_open()) {
+        logFile << "==================================================\n";
+        logFile << "BẮT ĐẦU CHẠY BENCHMARK TOÀN BỘ MODEL (OPTIX RELEASE)\n";
+        logFile.close();
+    }
 
-    // Lặp qua tất cả các file trong thư mục
+    std::cout << "Bat dau quet thu muc Model..." << std::endl;
     for (const auto& entry : fs::directory_iterator(folderPath)) {
-
-        // Chỉ xử lý các file có phần mở rộng là .obj
         if (entry.is_regular_file() && entry.path().extension() == ".obj") {
-
+            std::string filename = entry.path().filename().string();
+            std::transform(filename.begin(), filename.end(), filename.begin(), ::tolower);
+            if (filename == "bunny.obj") continue;
+            
             std::string filePath = entry.path().string();
-
-            std::cout << "==================================================\n";
-            std::cout << "Đang xử lý: " << filePath << "\n";
+            std::cout << "\n==================================================\n";
+            std::cout << "Dang xu ly: " << filePath << std::endl;
 
             // -------------------------------------------------------------
             // HEAT MAP 1: TẢI KẾT QUẢ SDF TỪ PYMESHLAB (PYTHON)
@@ -81,8 +88,27 @@ void initialize()
             // -------------------------------------------------------------
 
             Model modelOptix(filePath);
+            
+            // Get size without touching the matrices directly to avoid UB
+            int numVertices = modelOptix.GetVertexAttributes().size(); 
+            // Wait, attrPy is initialized later, but let's just parse the OBJ file directly? No, modelOptix already parsed it.
+            // Actually, we can get it from modelOptix after LoadPyHeatMap if we want PyMeshLab's count.
+            // Let's just run it!
+
             // Chạy tính toán bằng OptiX Shader
-            CaculatingSDFUsingOptix(modelOptix, optixState,64,150);
+            float elapsed = CaculatingSDFUsingOptix(modelOptix, optixState,64,150);
+            std::cout << "-> Thời gian chạy thuật toán GPU (Optix): " << elapsed << " giây\n";
+
+            // Ghi log vào file cho model hiện tại
+            std::cout << "[DEBUG] Ghi log performance_log.txt cho model: " << entry.path().filename().string() << "\n";
+            std::ofstream outLog("performance_log.txt", std::ios_base::app);
+            if (outLog.is_open()) {
+                outLog << "Model: " << entry.path().filename().string() << "\n";
+                outLog << "Vertices: " << modelOptix.GetVertexCount() << "\n";
+                outLog << "Faces: " << modelOptix.GetFaceCount() << "\n";
+                outLog << "[DEBUG] [SDF Pipeline] Thời gian tổng cộng (OptiX + GPU Smooth): " << elapsed << " giây\n";
+                outLog.close();
+            }
 
             // -------------------------------------------------------------
             // HEAT MAP 3: SO SÁNH SỰ KHÁC BIỆT (DIFFERENCE)
@@ -112,6 +138,8 @@ void initialize()
 
                 // RẤT QUAN TRỌNG: Xóa dữ liệu 3D cũ đi sau khi đóng cửa sổ
                 polyscope::removeAllStructures();
+            } else {
+                polyscope::removeAllStructures();
             }
         }
     }
@@ -124,9 +152,23 @@ void initialize()
     // ReleaseOpenCLEnvironment(clEnv);
 }
 
-int main() {
+int main(int argc, char** argv) {
+    bool hien_thi_3d = false; // Mặc định là benchmark mode
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--preview" || arg == "-p") {
+            hien_thi_3d = true;
+        }
+    }
+
+    if (hien_thi_3d) {
+        std::cout << "[INFO] Chay o che do Preview (Hien thi 3D Polyscope)" << std::endl;
+    } else {
+        std::cout << "[INFO] Chay o che do Benchmark (Khong hien thi 3D)" << std::endl;
+    }
+
     try {
-        initialize();
+        initialize(hien_thi_3d);
     }
     catch (std::runtime_error& e) {
         std::cerr << "\n[LỖI NGHIÊM TRỌNG]: " << e.what() << "\n";

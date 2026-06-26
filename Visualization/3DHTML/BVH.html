@@ -33,6 +33,23 @@
         #controls-hint span {
             margin: 0 10px;
         }
+        #bg-toggle {
+            position: absolute;
+            top: 25px;
+            right: 25px;
+            z-index: 20;
+            background: rgba(0, 0, 0, 0.6);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+        #bg-toggle:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
     </style>
     <script type="importmap">
         {
@@ -45,6 +62,7 @@
     </script>
 </head>
 <body>
+<button id="bg-toggle">🌙 Dark</button>
 <div id="controls-hint">
     <span>🖱️ Trái: Bước tiếp</span> |
     <span>🖱️ Phải: Lùi lại</span> |
@@ -60,6 +78,23 @@
     // 1. SETUP SCENE & CAMERA
     // ==========================================
     const scene = new THREE.Scene();
+
+    // Background toggle
+    let isDark = true;
+    const bgToggle = document.getElementById('bg-toggle');
+    bgToggle.addEventListener('click', () => {
+        isDark = !isDark;
+        if (isDark) {
+            document.body.style.backgroundColor = '#0a0a0a';
+            scene.background = null;
+            bgToggle.textContent = '🌙 Dark';
+        } else {
+            document.body.style.backgroundColor = '#ffffff';
+            scene.background = new THREE.Color(0xffffff);
+            bgToggle.textContent = '☀️ Light';
+        }
+    });
+
     const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
     camera.position.set(8, 4, 12);
 

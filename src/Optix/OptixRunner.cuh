@@ -25,7 +25,7 @@ namespace OptixRunner {
         return context;
     }
 
-    inline OptixTraversableHandle BuildBVH(OptixDeviceContext context, CUdeviceptr d_vertex_ptr, CUdeviceptr d_index_ptr, int numVertices, int numFaces, CUdeviceptr& d_tempBuffer, CUdeviceptr& d_gasOutputBuffer) {
+    inline OptixTraversableHandle BuildBVH(OptixDeviceContext context, CUdeviceptr d_vertex_ptr, CUdeviceptr d_index_ptr, int numVertices, int numFaces, CUdeviceptr& d_tempBuffer, CUdeviceptr& d_gasOutputBuffer, cudaStream_t stream = 0) {
         OptixBuildInput triangleInput = {};
         triangleInput.type                        = OPTIX_BUILD_INPUT_TYPE_TRIANGLES;
         triangleInput.triangleArray.vertexFormat  = OPTIX_VERTEX_FORMAT_FLOAT3;
@@ -39,17 +39,18 @@ namespace OptixRunner {
         triangleInput.triangleArray.numSbtRecords = 1;
 
         OptixAccelBuildOptions accelOptions = {};
-        accelOptions.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION; 
+        accelOptions.buildFlags = OPTIX_BUILD_FLAG_PREFER_FAST_TRACE; 
         accelOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
         
         OptixAccelBufferSizes gasBufferSizes;
         OPTIX_CHECK( optixAccelComputeMemoryUsage( context, &accelOptions, &triangleInput, 1, &gasBufferSizes ) );
 
+        // TODO: We should use async allocators, but cudaMalloc is sync. That's fine.
         CUDA_CHECK( cudaMalloc((void**)&d_tempBuffer, gasBufferSizes.tempSizeInBytes) );
         CUDA_CHECK( cudaMalloc((void**)&d_gasOutputBuffer, gasBufferSizes.outputSizeInBytes) );
 
         OptixTraversableHandle bvhHandle = 0;
-        OPTIX_CHECK( optixAccelBuild( context, 0, &accelOptions, &triangleInput, 1, d_tempBuffer, gasBufferSizes.tempSizeInBytes, d_gasOutputBuffer, gasBufferSizes.outputSizeInBytes, &bvhHandle, nullptr, 0 ) );
+        OPTIX_CHECK( optixAccelBuild( context, stream, &accelOptions, &triangleInput, 1, d_tempBuffer, gasBufferSizes.tempSizeInBytes, d_gasOutputBuffer, gasBufferSizes.outputSizeInBytes, &bvhHandle, nullptr, 0 ) );
         return bvhHandle;
     }
 
@@ -94,6 +95,15 @@ namespace OptixRunner {
         return sbt;
     }
 
+    inline float host_radicalInverse_VdC(unsigned int bits) {
+        bits = (bits << 16u) | (bits >> 16u);
+        bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+        bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+        bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+        bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+        return float(bits) * 2.3283064365386963e-10f;
+    }
+
     inline float* LaunchOptixAndCUB(
         int numVertices, int raysPerPoint, float coneAngleRadian,
         CUdeviceptr d_vertex_ptr, float3* d_normals,
@@ -115,6 +125,12 @@ namespace OptixRunner {
         params.bvhHandle    = bvhHandle;
         params.raysPerPoint = raysPerPoint;
         params.coneAngleRad = coneAngleRadian;
+
+        int limit = (raysPerPoint > 128) ? 128 : raysPerPoint;
+        for (int i = 0; i < limit; i++) {
+            params.hammersleyUVs[i].x = float(i) / float(limit);
+            params.hammersleyUVs[i].y = host_radicalInverse_VdC(i);
+        }
 
         CUdeviceptr d_params;
         CUDA_CHECK( cudaMalloc((void**)&d_params, sizeof(Params)) );

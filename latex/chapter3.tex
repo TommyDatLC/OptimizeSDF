@@ -1,10 +1,10 @@
 \chapter{Methodology}
 
-This chapter describes the overall pipeline for computing the Shape Diameter Function (SDF) using NVIDIA OptiX hardware-accelerated ray tracing. We present the system architecture, detail each processing stage, and explain the data flow from input mesh to final visualization. The proposed SDF computation pipeline consists of ten stages organized into four execution domains: input parsing, normal computation, OptiX ray tracing, and post-processing. Figure~\ref{fig:pipeline} shows the complete data flow.
+Welcome to the core of the project! In this chapter, we're going to break down the entire process (or "pipeline") of how we actually compute the thickness of a 3D model using NVIDIA OptiX. We will walk through the whole journey, from the moment we load a 3D model into the computer to the moment we get our final, smoothed-out thickness values. The whole process has four main phases: reading the file, figuring out which way the surface is facing, shooting the rays, and cleaning up the final math. Figure~\ref{fig:pipeline} shows the complete roadmap.
 
 \begin{figure}[ht]
 \centering
-\resizebox{\textwidth}{!}{%
+\makebox[\textwidth][c]{\resizebox{1.3\textwidth}{!}{%
 \begin{tikzpicture}[
     >=stealth,
     stage/.style={
@@ -35,39 +35,44 @@ This chapter describes the overall pipeline for computing the Shape Diameter Fun
 % --- CPU: just the stage box, no outer domain box ---
 \node[stage=blue!20, anchor=north] (load) at (0, 0) {\bfseries Read OBJ Model};
 
-% --- GPU Compute: just the stage box, no outer domain box ---
-\node[stage=orange!15, anchor=north] (normal) at (8.0cm, 0) {\bfseries Calculate Vertex Normals};
+% --- Parallel GPU Initialization Domain (with outer box) ---
+\node[domain=purple!60!black, minimum width=8.0cm, minimum height=6.0cm, anchor=north] (parallel_box) at (8.5cm, 0) {};
+\node[anchor=north, font=\fontsize{18}{22}\selectfont\bfseries, text=purple!40!black] at ([yshift=-1pt]parallel_box.north) {Parallel GPU Init};
+
+\node[stage=orange!15, anchor=north] (normal) at ([yshift=-0.8cm]parallel_box.north) {\bfseries Calculate Vertex Normals};
+\node[stage=red!15, anchor=north] (bvh) at ([yshift=-0.4cm]normal.south) {\bfseries Build BVH};
 
 % --- OptiX Domain (with outer box) ---
-\node[domain=red, minimum width=8.0cm, minimum height=12.0cm, anchor=north] (optix_box) at (16.5cm, 0) {};
-\node[anchor=north, font=\fontsize{18}{22}\selectfont\bfseries, text=red!70!black] at ([yshift=-1pt]optix_box.north) {OptiX Ray Tracing};
+\node[domain=red, minimum width=8.0cm, minimum height=9.5cm, anchor=north] (optix_box) at (17.5cm, 0) {};
+\node[anchor=north, font=\fontsize{18}{22}\selectfont\bfseries, text=red!70!black, align=center] at ([yshift=-1pt]optix_box.north) {OptiX Ray Tracing \\ Engine};
 
 \node[stage=red!15, anchor=north] (sbt) at ([yshift=-0.8cm]optix_box.north) {\bfseries Build Shader Binding Table};
-\node[stage=red!15, anchor=north] (bvh) at ([yshift=-0.4cm]sbt.south) {\bfseries Build BVH};
-\node[stage=red!15, anchor=north] (raygen) at ([yshift=-0.4cm]bvh.south) {\bfseries Generate Cone Rays};
+\node[stage=red!15, anchor=north] (raygen) at ([yshift=-0.4cm]sbt.south) {\bfseries Generate Cone Rays};
 \node[stage=red!15, anchor=north] (trace) at ([yshift=-0.4cm]raygen.south) {\bfseries Trace Rays};
 \node[stage=red!15, anchor=north] (rawsdf) at ([yshift=-0.4cm]trace.south) {\bfseries Calculate Weighted SDF};
 
-\draw[arr, red!50!black] (sbt) -- (bvh);
-\draw[arr, red!50!black] (bvh) -- (raygen);
+\draw[arr, red!50!black] (sbt) -- (raygen);
 \draw[arr, red!50!black] (raygen) -- (trace);
 \draw[arr, red!50!black] (trace) -- (rawsdf);
 
 % --- GPU Post-Processing Domain (with outer box) ---
-\node[domain=green!60!black, minimum width=8.0cm, minimum height=12.0cm, anchor=north] (post_box) at (25.0cm, 0) {};
+\node[domain=green!60!black, minimum width=16.0cm, minimum height=10.0cm, anchor=north] (post_box) at (30cm, 0) {};
 \node[anchor=north, font=\fontsize{18}{22}\selectfont\bfseries, text=green!40!black] at ([yshift=-1pt]post_box.north) {GPU Post-Processing};
 
-\node[stage=green!15, anchor=north] (norm) at ([yshift=-0.8cm]post_box.north) {\bfseries Normalize SDF};
-\node[stage=green!15, anchor=north] (csr) at ([yshift=-0.4cm]norm.south) {\bfseries Build Adjacency Graph};
-\node[stage=green!15, anchor=north] (smooth) at ([yshift=-0.4cm]csr.south) {\bfseries Smooth SDF};
+\node[stage=green!15, anchor=north] (norm) at ([xshift=-4.0cm, yshift=-1.2cm]post_box.north) {\bfseries Normalize SDF};
+\node[stage=green!15, anchor=north] (csr) at ([xshift=4.0cm, yshift=-1.2cm]post_box.north) {\bfseries Build Adjacency Graph};
+\node[stage=green!15, anchor=north] (smooth) at ([yshift=-1.5cm]norm.south -| post_box.center) {\bfseries Smooth SDF};
 
-\draw[arr, green!40!black] (norm) -- (csr);
+\draw[arr, green!40!black] (norm) -- (smooth);
 \draw[arr, green!40!black] (csr) -- (smooth);
 
 % --- Inter-domain arrows ---
-\draw[arr, black!60] (load.east) -- (normal.west);
-\draw[arr, black!60] (normal.east) -- (optix_box.west);
-\draw[arr, black!60] (optix_box.east) -- (post_box.west);
+\draw[arr, black!60] (load.east) to[out=0, in=180] (normal.west);
+\draw[arr, black!60] (load.east) to[out=0, in=180] (bvh.west);
+\draw[arr, black!60] (normal.east) to[out=0, in=180] (trace.west);
+\draw[arr, black!60] (bvh.east) to[out=0, in=180] (trace.west);
+\draw[arr, black!60] (rawsdf.east) to[out=0, in=180] (norm.west);
+\draw[arr, black!60] (load.north) to[out=90, in=90, looseness=0.4] (csr.north);
 
 % --- Input/Output ---
 \node[font=\fontsize{18}{22}\selectfont\bfseries, left=1.5cm of load.west, anchor=east] (input) {Input: OBJ};
@@ -77,32 +82,222 @@ This chapter describes the overall pipeline for computing the Shape Diameter Fun
 \draw[arr, densely dashed, black!40] (post_box.east) -- (output);
 
 \end{tikzpicture}%
-}
-\caption{Overall OptiX SDF computation pipeline.}
+}}
+\caption{Overall OptiX SDF computation pipeline with parallel execution.}
 \label{fig:pipeline}
 \end{figure}
 
-Figure~\ref{fig:pipeline} illustrates the complete data flow of the proposed SDF computation pipeline. The workflow progresses from reading the OBJ model (blue) through calculating vertex normals (orange), OptiX hardware-accelerated ray tracing (red), to GPU post-processing (green). The pipeline consists of ten stages organized into four execution domains, each connected by arrows indicating the data flow from input mesh to final visualization.
+As you can see in Figure~\ref{fig:pipeline}, the workflow has been upgraded to a highly parallel architecture. It starts by loading the 3D model on the CPU (the blue box). To maximize hardware utilization, the system then executes two heavy initialization tasks simultaneously using CUDA streams: calculating the vertex normals on the GPU and building the OptiX Bounding Volume Hierarchy (BVH) structure (the purple box). Once both are complete, it hands the physics simulation over to the OptiX ray tracing engine (the red box), and finally cleans up the data with a GPU post-processing stage (the green box). This parallelization significantly reduces the pipeline's startup time!
 
 \section{Read OBJ Model}
 
-The pipeline begins by reading triangular mesh data from OBJ files. The \texttt{Model} class parses vertex positions ($\mathbf{v} \in \mathbb{R}^3$) and face indices ($f \in \mathbb{N}^3$) from the text format, converting from 1-based to 0-based indexing. The parsed vertex and face arrays are packed into row-major GPU matrices: a vertex matrix of shape $(|V| \times 3)$ where each row stores the $x$, $y$, $z$ coordinates of one vertex, and a face index matrix of shape $(|F| \times 3)$ where each row stores the three vertex indices of one triangle, using unsigned integers to match OptiX's \texttt{uint3} binary layout. These matrices are transferred to GPU memory once and reused throughout the pipeline.
+Triangles form every 3D model. The triangle data is saved in the .obj file. First, it stores the position of every vertex that forms the 3D model. Secondly, it stores the links between the vertices that define the triangular faces.
 
-\section{Vertex Normals}
+\begin{figure}[H]
+\centering
+\begin{minipage}{0.48\textwidth}
+\centering
+\includegraphics[width=\textwidth]{images/Chapter3/3.1/Figure 3D model example.PNG}
+\caption*{\large (a) A complex 3D model rendered with solid shading.}
+\end{minipage}
+\hfill
+\begin{minipage}{0.48\textwidth}
+\centering
+\includegraphics[width=\textwidth]{images/Chapter3/3.1/Figure 3D model wireframe (triangles).PNG}
+\caption*{\large (b) The same model showing the triangular mesh wireframe structure.}
+\end{minipage}
+\caption[A 3D model (a) and its wireframe representation (b) composed of triangles.]{A 3D model (a) and its wireframe representation (b) composed of triangles.}
+\label{fig:3d_model_example}
+\end{figure}
 
-With the mesh data loaded onto the GPU, the next step is to compute vertex normals. A vertex normal is a unit vector that represents the average direction of the surface at a vertex, computed by accumulating the normals of all adjacent faces. Vertex normals are required for the cone ray tracing stage, as they define the orientation of the cone axis for each vertex. Vertex normals are computed on the GPU in two kernel launches. In the first kernel (\texttt{GPUNormalCaculation}), each thread processes one face: it reads the three vertex positions of the triangle, computes two edge vectors, and calculates the cross product. The cross product of two edges of a triangle is proportional to the area of that face and points in the direction of the face normal. This cross product is then accumulated into each of the three vertices of the face using \texttt{atomicAdd}, which allows concurrent threads to safely add to the same memory location. The result is a per-vertex buffer containing the sum of area-weighted face normals for all faces adjacent to each vertex. In the second kernel (\texttt{GPUNormalizeVertexNormal}), each thread normalizes one vertex's accumulated normal to unit length. Degenerate vertices (those with zero-length normals due to isolated or collinear faces) receive a fallback normal of $(0, 0, 1)$. The area-weighting ensures that large faces contribute proportionally more to the vertex normal than small faces, producing a smoother and more accurate normal field.
+Figure~\ref{fig:3d_model_example} shows that complex 3D shapes are fundamentally constructed from a dense network of interconnected triangles. Every 3D surface is approximated by a collection of triangular faces, where each triangle is defined by three vertices and their connectivity.
 
-For a triangle with vertices $v_0$, $v_1$, $v_2$, the edge vectors are:
+\begin{figure}[H]
+\centering
+\begin{Verbatim}[ fontsize=\small, frame=single, framesep=3mm, numbers=left, numbersep=5pt]
+# cube.obj - Sample OBJ file
+# Vertex positions (x y z)
+v  1.0  1.0  0.0  # (1st vertex)
+v  1.0 -1.0  0.0  # (2nd vertex)
+v -1.0 -1.0  0.0  # (3rd vertex)
+v -1.0  1.0  0.0  # (4th vertex)
+v  1.0  1.0  1.0
+v  1.0 -1.0  1.0
+v -1.0 -1.0  1.0
+v -1.0  1.0  1.0
+# Faces (vertex indices, 1-based)
+f 1 2 3  # <- connect vertex 1, vertex 2, vertex 3 to form a triangle
+f 1 3 4  # <- connect vertex 1, vertex 3, vertex 4 to form a triangle
+# 2 triangles combine to form a square face (vertices 1, 2, 3, 4)
+f 5 6 7
+f 5 7 8
+f 1 2 6
+f 1 6 5
+f 3 4 8
+f 3 8 7
+f 1 4 8
+f 1 8 5
+f 2 3 7
+f 2 7 6
+\end{Verbatim}
+\caption{Structure of a sample Cube 3D object saving in the textlike .OBJ file.}
+\label{fig:obj_structure}
+\end{figure}
+
+Figure~\ref{fig:obj_structure} shows the structure of a sample OBJ file. The file uses a simple text format where lines starting with \texttt{v} define points in 3D space (called vertices), and lines starting with \texttt{f} define flat faces by connecting three of those points. Popular graphics APIs like Vulkan or DirectX use three points instead of two for the connection between vertices because every flat surface has two sides: a front and a back. To optimize rendering, the GPU only draws the visible front faces and hides the back faces. However, the graphics API does not automatically know which side is the front, so you must define it manually by the order in which you connect the points (known as winding order). For example, if you define a face with vertices \texttt{f 1 2 3}, the API connects the points in a counter-clockwise direction, which manually defines it as the front face. If you replace it with \texttt{f 1 3 2}, it swaps the front face to the opposite side.
+
+The program starts by reading the 3D model data from the OBJ file. A component called the \texttt{Model} class goes through the text and extracts two main lists: the points ($x, y, z$ coordinates) and the faces (which three points form a triangle). Because OBJ files start counting items from 1, the program subtracts 1 from the face numbers so they start at 0, which is how the graphics card (GPU) prefers to count.
+
+These lists are then packed into two simple data matrices for the GPU. The first is a vertex matrix where each row holds the coordinates of a single point. The second is a face matrix where each row holds the three point IDs that make up a triangle. These matrices are sent to the GPU memory once and reused for all the calculations that come next. For example, using the data from the sample Cube OBJ file above, the resulting GPU matrices would look like this:
 
 \begin{equation}
-    \vec{e}_1 = v_1 - v_0, \qquad \vec{e}_2 = v_2 - v_0
+\mathbf{V} = \begin{bmatrix}
+1.0 & 1.0 & 0.0 \\
+1.0 & -1.0 & 0.0 \\
+-1.0 & -1.0 & 0.0 \\
+\vdots & \vdots & \vdots
+\end{bmatrix}, \quad
+\mathbf{F} = \begin{bmatrix}
+0 & 1 & 2 \\
+0 & 2 & 3 \\
+4 & 5 & 6 \\
+\vdots & \vdots & \vdots
+\end{bmatrix}
 \end{equation}
 
-The area-weighted face normal is the cross product of these edges:
+The \texttt{Model::ReadFromObjFile()} method in \texttt{Core/Model.cu} parses the OBJ text file line-by-line, extracting vertex positions (\texttt{v} lines) and face indices (\texttt{f} lines). The parsed data is packed into \texttt{Matrix<float>} (vertices) and \texttt{Matrix<unsigned int>} (faces), then uploaded to GPU memory via \texttt{CopyToDevice()}. The \texttt{unsigned int} type is chosen to match OptiX's \texttt{uint3} binary layout.
+
+\section{Parallel GPU Initialization}
+
+To maximize hardware utilization, the system executes two heavy initialization tasks simultaneously on the GPU using CUDA streams: calculating the vertex normals and building the OptiX Bounding Volume Hierarchy (BVH). These two tasks are completely independent of each other, so they can run in parallel on separate CUDA streams, significantly reducing the pipeline's startup time.
+
+\subsection{Calculate Vertex Normals}
+
+With the mesh data loaded onto the GPU, the next step is to compute vertex normals. Think of a vertex normal as a little arrow pointing straight out from the surface, telling us which way that specific point is facing. We figure this out by looking at all the flat triangles connected to that point and averaging their directions. But why do we need these arrows? They are absolutely crucial for the next step (cone ray tracing) because they tell the rays exactly which direction to travel.
+
+However, figuring out these directions for millions of points at once is a huge challenge. To solve this, the GPU breaks the work into two separate, massive parallel tasks. In the first task (\texttt{GPUNormalCaculation}), the GPU assigns one tiny worker (a thread) to every single triangle. The worker calculates which way its triangle is facing and how big the triangle is. But what happens when multiple workers try to update the exact same point at the exact same time? We use a special command called \texttt{atomicAdd}. This acts like a traffic light, letting workers safely combine their results without crashing into each other.
+
+The result is a list where every point knows the combined directions of all its neighboring triangles, with bigger triangles having a stronger vote. In the second task (\texttt{GPUNormalizeVertexNormal}), another set of workers shrinks or stretches all these combined arrows so they are exactly the same length. But what if a point is broken and doesn't have a valid direction? In such cases, we simply give it a default fallback arrow. Ultimately, because bigger triangles were given a stronger vote, the final surface looks much smoother and far more realistic!
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    >=stealth,
+    x={(-0.6cm, -0.4cm)}, y={(1cm, -0.1cm)}, z={(0cm, 1cm)},
+    vec/.style={->, very thick},
+    vertex/.style={circle, fill=black, inner sep=1.5pt}
+]
+
+% Coordinates in 3D
+\coordinate (v0) at (0, 0, 0);
+\coordinate (v1) at (4, 0, 0);  % Along X axis
+\coordinate (v2) at (1.5, 3.5, 0);  % In XY plane
+
+% Draw the triangle
+\draw[fill=gray!15, draw=black!50, thick, join=round] (v0) -- (v1) -- (v2) -- cycle;
+
+% Vertices
+\node[vertex, label=left:{$v_0$}] at (v0) {};
+\node[vertex, label=below:{$v_1$}] at (v1) {};
+\node[vertex, label=right:{$v_2$}] at (v2) {};
+
+% Vectors e1 and e2
+\draw[vec, draw=cyan] (v0) -- (v1) node[midway, below left] {$\textcolor{cyan}{\vec{e}_1}$};
+\draw[vec, draw=blue] (v0) -- (v2) node[midway, above left, xshift=-0.2cm] {$\textcolor{blue}{\vec{e}_2}$};
+
+% Face normal
+\coordinate (nf) at (0, 0, 4);
+\draw[vec, draw=green!60!black, line width=1.8pt] (v0) -- (nf) node[above right] {$\textcolor{green!60!black}{\vec{n}_f} = \textcolor{cyan}{\vec{e}_1} \times \textcolor{blue}{\vec{e}_2}$};
+
+% Right angle symbols in native 3D coordinates
+% Between e1 (along X axis) and nf (along Z axis)
+\draw[black!60, thick] (0.5, 0, 0) -- (0.5, 0, 0.5) -- (0, 0, 0.5);
+
+% Between e2 (1.5, 3.5, 0) and nf (0, 0, 4)
+% We move a bit along e2: let's use t = 0.14 -> (0.21, 0.49, 0)
+\coordinate (e2_dir) at (0.21, 0.49, 0);
+\coordinate (e2_dir_up) at (0.21, 0.49, 0.5);
+\coordinate (z_dir) at (0, 0, 0.5);
+\draw[black!60, thick] (e2_dir) -- (e2_dir_up) -- (z_dir);
+
+\end{tikzpicture}
+\caption{Visualization of the cross product calculation.}
+\label{fig:face_normal}
+\end{figure}
+
+For a triangle with vertices $v_0$, $v_1$, $v_2$, the two edge vectors are:
 
 \begin{equation}
-    \vec{n}_f = \vec{e}_1 \times \vec{e}_2
+    \textcolor{cyan}{\vec{e}_1} = v_1 - v_0, \qquad \textcolor{blue}{\vec{e}_2} = v_2 - v_0
 \end{equation}
+
+The area-weighted face normal is the cross product of these edges, resulting in a perpendicular vector:
+
+\begin{equation}
+    \textcolor{green!60!black}{\vec{n}_f} = \textcolor{cyan}{\vec{e}_1} \times \textcolor{blue}{\vec{e}_2}
+\end{equation}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    >=stealth,
+    vec/.style={->, very thick},
+    vertex/.style={circle, fill=black, inner sep=1.5pt}
+]
+
+% Central vertex
+\coordinate (v) at (0, 0);
+
+% Neighboring vertices (forming a fan around v)
+\coordinate (n1) at (2.5, -0.5);
+\coordinate (n2) at (2.0, 1.5);
+\coordinate (n3) at (0.0, 2.5);
+\coordinate (n4) at (-1.5, 1.5);
+\coordinate (n5) at (-2.0, -0.5);
+\coordinate (n6) at (-0.5, -2.0);
+
+% Draw the faces
+\draw[fill=blue!10, draw=black!50, thick, join=round] (v) -- (n1) -- (n2) -- cycle;
+\draw[fill=red!10, draw=black!50, thick, join=round] (v) -- (n2) -- (n3) -- cycle;
+\draw[fill=green!10, draw=black!50, thick, join=round] (v) -- (n3) -- (n4) -- cycle;
+\draw[fill=yellow!10, draw=black!50, thick, join=round] (v) -- (n4) -- (n5) -- cycle;
+\draw[fill=orange!10, draw=black!50, thick, join=round] (v) -- (n5) -- (n6) -- cycle;
+\draw[fill=purple!10, draw=black!50, thick, join=round] (v) -- (n6) -- (n1) -- cycle;
+
+% Central vertex node
+\node[vertex, label=below right:{$v_j$}] at (v) {};
+
+% f1: blue triangle (v, n1, n2), center approx (1.5, 0.3)
+\draw[vec, draw=blue!60!black] (1.5, 0.3) -- (2.0, 1.1) node[right] {$\vec{n}_{f1}$};
+\draw[thin, blue!60!black, opacity=0.6] (1.5, 0.3) ++(0.13, -0.08) -- ++(0.08, 0.13) -- ++(-0.13, 0.08);
+
+% f2: red triangle (v, n2, n3), center approx (0.6, 1.3)
+\draw[vec, draw=red!60!black] (0.6, 1.3) -- (0.8, 2.3) node[above right] {$\vec{n}_{f2}$};
+\draw[thin, red!60!black, opacity=0.6] (0.6, 1.3) ++(0.15, -0.03) -- ++(0.03, 0.15) -- ++(-0.15, 0.03);
+
+% f3: green triangle (v, n3, n4), center approx (-0.5, 1.3)
+\draw[vec, draw=green!60!black] (-0.5, 1.3) -- (-1.0, 2.1) node[above left] {$\vec{n}_{f3}$};
+\draw[thin, green!60!black, opacity=0.6] (-0.5, 1.3) ++(0.13, 0.08) -- ++(-0.08, 0.13) -- ++(-0.13, -0.08);
+
+% f4: yellow triangle (v, n4, n5), center approx (-1.1, 0.3)
+\draw[vec, draw=yellow!60!black] (-1.1, 0.3) -- (-1.7, 0.9) node[left] {$\vec{n}_{f4}$};
+\draw[thin, yellow!60!black, opacity=0.6] (-1.1, 0.3) ++(0.11, 0.11) -- ++(-0.11, 0.11) -- ++(-0.11, -0.11);
+
+% f5: orange triangle (v, n5, n6), center approx (-0.8, -0.8)
+\draw[vec, draw=orange!60!black] (-0.8, -0.8) -- (-1.4, -1.4) node[below left] {$\vec{n}_{f5}$};
+\draw[thin, orange!60!black, opacity=0.6] (-0.8, -0.8) ++(-0.11, 0.11) -- ++(-0.11, -0.11) -- ++(0.11, -0.11);
+
+% f6: purple triangle (v, n6, n1), center approx (0.6, -0.8)
+\draw[vec, draw=purple!60!black] (0.6, -0.8) -- (1.1, -1.4) node[below right] {$\vec{n}_{f6}$};
+\draw[thin, purple!60!black, opacity=0.6] (0.6, -0.8) ++(-0.12, -0.10) -- ++(0.10, -0.12) -- ++(0.12, 0.10);
+
+% Accumulated long vertex normal
+\draw[vec, draw=purple, line width=2.5pt] (v) -- (0.5, 4.5) node[above] {$\vec{N}_{v_j}$ (Accumulated \& Long)};
+
+\end{tikzpicture}
+\caption{Visualization of Formula 3.4.}
+\label{fig:accumulate_normal}
+\end{figure}
 
 The magnitude $|\vec{n}_f|$ equals twice the area of the triangle, so larger faces naturally contribute more weight. Each face normal is accumulated into its three vertices using atomic addition:
 
@@ -110,95 +305,325 @@ The magnitude $|\vec{n}_f|$ equals twice the area of the triangle, so larger fac
     \vec{N}_{v_j} = \sum_{f \in \mathcal{F}(v_j)} \vec{n}_f, \qquad j = 0, 1, 2
 \end{equation}
 
-where $\mathcal{F}(v_j)$ is the set of all faces adjacent to vertex $v_j$. The final vertex normal is obtained by normalization:
+where $\mathcal{F}(v_j)$ is the set of all faces adjacent to vertex $v_j$.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    >=stealth,
+    vec/.style={->, very thick},
+    vertex/.style={circle, fill=black, inner sep=1.5pt}
+]
+
+% Central vertex
+\coordinate (v) at (0, 0);
+
+% Neighboring vertices (forming a fan around v)
+\coordinate (n1) at (2.5, -0.5);
+\coordinate (n2) at (2.0, 1.5);
+\coordinate (n3) at (0.0, 2.5);
+\coordinate (n4) at (-1.5, 1.5);
+\coordinate (n5) at (-2.0, -0.5);
+\coordinate (n6) at (-0.5, -2.0);
+
+% Draw the faces (faded to emphasize the normal)
+\draw[fill=blue!5, draw=black!30, thick, join=round] (v) -- (n1) -- (n2) -- cycle;
+\draw[fill=red!5, draw=black!30, thick, join=round] (v) -- (n2) -- (n3) -- cycle;
+\draw[fill=green!5, draw=black!30, thick, join=round] (v) -- (n3) -- (n4) -- cycle;
+\draw[fill=yellow!5, draw=black!30, thick, join=round] (v) -- (n4) -- (n5) -- cycle;
+\draw[fill=orange!5, draw=black!30, thick, join=round] (v) -- (n5) -- (n6) -- cycle;
+\draw[fill=purple!5, draw=black!30, thick, join=round] (v) -- (n6) -- (n1) -- cycle;
+
+% Central vertex node
+\node[vertex, label=below right:{$v_j$}] at (v) {};
+
+% Long accumulated normal
+\draw[vec, draw=purple!30, line width=2.5pt, dashed] (v) -- (0.5, 4.5) node[above right, text=purple!50] {$\vec{N}_{v_j}$ (Long)};
+
+% Short normalized normal (length = 1.5 for visual scale)
+\draw[vec, draw=cyan!80!black, line width=2pt] (v) -- (0.165, 1.485) node[right, text=cyan!80!black] {$\hat{\mathbf{n}}_v$ (Normalized, Length = 1)};
+
+% A circle of radius 1.5 to represent unit length
+\draw[dashed, draw=gray, thick] (v) circle (1.5);
+\node[text=gray, font=\footnotesize] at (-1.4, -1.2) {Unit Sphere};
+
+\end{tikzpicture}
+\caption{Visualization of Formula 3.5.}
+\label{fig:normalize_normal}
+\end{figure}
+
+The final vertex normal is obtained by normalization:
 
 \begin{equation}
     \hat{\mathbf{n}}_v = \frac{\vec{N}_v}{|\vec{N}_v|}, \qquad \text{or} \qquad (0, 0, 1) \quad \text{if } |\vec{N}_v| = 0
 \end{equation}
 
-\section{Shader Binding Table}
+Two CUDA kernels in \texttt{Core/ModelHelper.cu} handle this: \texttt{GPUNormalCaculation} uses \texttt{blockSize=256} and \texttt{atomicAdd} to accumulate face normals into vertex normals, and \texttt{GPUNormalizeVertexNormal} normalizes them to unit length. This runs on a dedicated CUDA stream in parallel with BVH construction.
 
-With the mesh geometry and normals prepared, the OptiX ray tracing pipeline can be configured. The first component is the Shader Binding Table, which maps shaders to geometry.
+\subsection{Build BVH}
 
-In traditional rasterization, rendering is sequential: you select a shader, load the object's data, and issue a draw command. With ray tracing, however, the situation is far less predictable. A ray may hit a glass sphere (requiring reflection), a brick wall (requiring shadow casting), or miss all geometry entirely. The GPU cannot know in advance what a ray will intersect, so it needs a fast lookup table to determine which shader to execute and what data to use for each intersection. This lookup table is the Shader Binding Table (SBT).
+If the SBT is the "address book" that tells the GPU what code to run, how does the ray actually find the triangle it hits in a scene with millions of them? Do we test the ray against every single triangle? Absolutely not! That would take forever. Instead, we use a clever sorting system called a Bounding Volume Hierarchy (BVH).
 
-The SBT is a contiguous buffer on the GPU, divided into Shader Records. Each Shader Record consists of two components: a Shader ID (a 32-byte header that points to the compiled shader code in GPU memory) and Local Root Arguments (per-object data such as texture IDs, color values, reflectivity, or pointers to vertex buffers). This design allows different objects to share the same shader code while using completely different data, enabling per-material variation without duplicating shaders.
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.8\textwidth]{"images/Chapter3/BVH constrution/Capture.PNG"}
+    \caption{Visual representation of the Bounding Volume Hierarchy (BVH) structure. The ray only checks which box it hits, and then tests the triangles inside that hitted-box volume. The red triangle is the triangle being tested, and the green triangle is the closest hit. It reduces more than 90\% of the overall test triangles compared to a brute force approach.}
+    \label{fig:bvh_structure}
+\end{figure}
 
-For SDF computation, the SBT is minimal because all triangles in the mesh share the same material and shader. A single SBT entry per program group (ray generation, closest-hit, miss) is sufficient. No per-geometry SBT data is required, since the only per-ray data is the hit distance, which is returned through the payload mechanism rather than through SBT entries.
+Think of the BVH like a massive game of "Guess Who?". Instead of asking "did I hit triangle 1? Did I hit triangle 2?", the BVH puts the whole 3D model inside a giant invisible box. It asks, "Did the ray hit the giant box?" If no, the ray missed completely! If yes, the BVH splits the box into two smaller boxes and asks again. It keeps splitting into smaller and smaller boxes until it finds the exact triangle the ray hit. This "divide and conquer" trick makes finding hits incredibly fast.
 
-\section{BVH Construction}
 
-To determine what a ray hits in a scene with millions of triangles, the Bounding Volume Hierarchy (BVH) is used as the acceleration structure. If the SBT is the lookup table that answers the question ``which shader should execute when a ray hits something?'' then the BVH answers the question ``what did the ray just hit?''
 
-In a scene with millions of triangles, brute-force ray-triangle intersection testing is computationally infeasible. Without acceleration, a single ray would need to be tested against every triangle in the scene, making real-time ray tracing impossible. The BVH solves this problem using a divide-and-conquer approach.
+When we tell OptiX to build this BVH box system, we have to flip a special switch called "disable face culling." Why? Because normally, GPUs only let rays hit the outside of a 3D model. But for our thickness calculation, we are shooting rays *inside* the model! Flipping this switch lets our rays safely hit the back-walls on the inside.
 
-The BVH organizes the triangle mesh into a tree of Axis-Aligned Bounding Boxes (AABBs). At the top level, a single bounding box encloses the entire mesh. This box is recursively subdivided into smaller boxes, each containing a subset of the triangles, until the leaf nodes contain individual triangles. Traversal begins at the root: if a ray misses the root bounding box, the entire scene is discarded immediately. If it hits, the ray descends into the child boxes, recursively testing each one. This process continues until the ray reaches the leaf nodes, where the actual ray-triangle intersection tests are performed. Through this hierarchy, the number of intersection tests is reduced from $O(F)$ to $O(\log F)$, where $F$ is the number of faces.
+The BVH is built by \texttt{OptixRunner::BuildBVH()} in \texttt{OptixRunner.cuh} using \texttt{optixAccelBuild}. Key flags: \texttt{OPTIX\_BUILD\_FLAG\_PREFER\_FAST\_TRACE} optimizes for trace speed, and \texttt{OPTIX\_GEOMETRY\_FLAG\_DISABLE\_TRIANGLE\_FACE\_CULLING} enables both-sided triangle hits for interior rays. This runs on a dedicated CUDA stream (\texttt{streamBVH}) in parallel with vertex normal computation.
 
-For each model, a Geometry Acceleration Structure (GAS) is built from the triangle mesh using OptiX's \texttt{optixAccelBuild}. The build configuration enables bidirectional hits via \texttt{OPTIX\_GEOMETRY\_FLAG\_DISABLE\_TRIANGLE\_FACE\_CULLING}, allowing rays to intersect triangles from both sides. This is essential for SDF computation where rays are shot inward from the surface and must be able to hit the interior side of triangles. Compaction is permitted through \texttt{OPTIX\_BUILD\_FLAG\_ALLOW\_COMPACTION}, enabling the BVH to be compacted after construction to reduce memory footprint. Single-level traversal is enforced via \texttt{OPTIX\_TRAVERSABLE\_GRAPH\_FLAG\_ALLOW\_SINGLE\_GAS}, avoiding the overhead of instance-level acceleration structures. The BVH construction is performed by RT Cores in dedicated hardware, offloading the work from the CUDA cores.
+\section{OptiX Ray Tracing Engine}
 
-\section{OptiX Pipeline Setup}
+With our 3D model fully loaded into GPU memory and its surface normals pre-calculated, the foundation is set. The next step in our pipeline is the core physics simulation: shooting millions of rays to measure distances. To achieve this in real-time, we leverage the NVIDIA OptiX ray tracing engine, which requires a specific architectural setup to unleash its hardware-accelerated performance.
+
+\subsection{Build Shader Binding Table}
+
+With the mesh geometry and normals prepared, the OptiX ray tracing pipeline can be configured. But how does the GPU know what to do when a ray actually hits something? The answer lies in the Shader Binding Table (SBT).
+
+In older graphics rendering (like traditional video games), things are drawn one by one in a predictable order. But with ray tracing, a ray bounces around unpredictably! A ray might hit a glass window, a brick wall, or simply miss everything and hit the sky. How can the GPU possibly know what code to run for each unique material when billions of rays are flying everywhere? However chaotic it seems, the GPU solves this using a massive, ultra-fast dictionary called the Shader Binding Table.
+
+Think of the SBT as a giant address book on the GPU. Every entry in this address book has two parts. First, it contains the "Shader ID," which is basically a phone number telling the GPU exactly which piece of code to run (like "run the glass reflection code"). Second, it contains "Arguments," which are extra notes attached to that entry (like "this glass is tinted green"). This clever design means you don't need to write new code for every single object in your scene; you just change the notes in the address book!
+
+But what about our SDF computation? Do we need a massively complex address book? Not at all! Because our entire 3D mesh is made of the exact same material, our address book only needs a single entry for each main task: one for shooting the ray, one for when it hits a triangle, and one for when it misses completely. We don't even need to store extra notes in the address book, because the only thing we care about is the distance the ray traveled, which is automatically carried back by the ray hit program.
+
+\begin{figure}[H]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+    >=stealth,
+    box/.style={
+        rectangle, 
+        rounded corners=3pt,
+        draw=black!70, 
+        thick, 
+        minimum width=4.8cm, 
+        minimum height=1.2cm,
+        align=center,
+        font=\small
+    },
+    sbtbox/.style={box, fill=blue!10},
+    recbox/.style={box, fill=yellow!15},
+    arrow/.style={->, thick, draw=black!70}
+]
+
+\node[sbtbox, font=\bfseries\large] (sbt) at (0, 0) {Shader Binding Table};
+
+\node[recbox] (rg) at (-5.5, -2.5) {\textbf{ray gen program}\\[1mm]\texttt{<RaygenRecord>}};
+\node[recbox, opacity=0.5] (ms) at (0, -2.5) {\textbf{ray miss program}\\[1mm]\texttt{<MissRecord>}};
+\node[recbox] (hg) at (5.5, -2.5) {\textbf{ray hit program}\\[1mm]\texttt{<HitgroupRecord>}};
+
+\draw[arrow] (sbt.south) -- (rg.north);
+\draw[arrow, opacity=0.5] (sbt.south) -- (ms.north);
+\draw[arrow] (sbt.south) -- (hg.north);
+
+% Add details inside or below
+\node[below=0.2cm of rg, font=\footnotesize, align=center] {32-byte Function Pointer\\(ray gen program:\\\texttt{\_\_raygen\_\_sdf\_cone})};
+\node[below=0.2cm of ms, font=\footnotesize, align=center, opacity=0.5] {Function Pointer is null\\(ray miss program)};
+\node[below=0.2cm of hg, font=\footnotesize, align=center] {32-byte Function Pointer\\(ray hit program:\\\texttt{\_\_closesthit\_\_sdf})};
+
+\end{tikzpicture}%
+}
+\caption{Diagram of our Shader Binding Table implementation.}
+\label{fig:sbt_architecture}
+\end{figure}
+
+Figure \ref{fig:sbt_architecture} demonstrates how it acts as an execution directory, mapping three distinct ray tracing events to their corresponding code on the GPU: generating the initial cone rays, recording distances when rays successfully hit the mesh, and correctly ignoring rays that miss the mesh entirely.
+
+The SBT is constructed by \texttt{OptixRunner::BuildSBT()} in \texttt{OptixRunner.cuh}. Three records (\texttt{RaygenRecord}, \texttt{MissRecord}, \texttt{HitgroupRecord}) are packed with \texttt{optixSbtRecordPackHeader} and uploaded to device memory. Each record uses \texttt{OPTIX\_SBT\_RECORD\_ALIGNMENT} for proper GPU memory alignment.
+
+
+\subsection{OptiX Pipeline Setup}
 
 With the SBT configured, the OptiX pipeline itself must be initialized. The OptiX ray tracing pipeline is initialized once and reused for each model. It consists of a module creation step, program group definitions, and pipeline linking.
 
-The CUDA shader code (\texttt{SDFOptix.cu}) defines three shader programs that are registered with OptiX as function pointers in program memory: a ray generation program, a closest-hit program, and a miss program.
+Now that the "address book" (SBT) and the "boxes" (BVH) are ready, we give OptiX three specific mini-programs to run. However, the OptiX engine cannot run raw C++ code directly. These mini-programs are written in OptiX CUDA C++ (\texttt{.cu} files) and must use the OptiX shader compiler to first be compiled into Parallel Thread Execution (PTX) format---an intermediate, assembly-like language designed specifically for NVIDIA GPUs. 
 
-The ray generation program (\texttt{\_\_raygen\_\_sdf\_cone}) is invoked once per ray. For each vertex $p$ with outward normal $\vec{\mathbf{n}}$, a local tangent frame is first constructed: the cone axis is $-\vec{\mathbf{n}}$ (pointing inward), and orthogonal tangent and bitangent vectors are computed via cross products. Then, $R = 64$ ray directions are generated using random sampling uniformly distributed within the solid angle of a cone. Each sample $(u, v) \in [0,1]^2$ is mapped to a cosine-weighted hemisphere cap centered on $-\vec{\mathbf{n}}$, with a cone half-angle $\theta_{\mathrm{cone}} = 75^\circ$:
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    >=stealth,
+    surface/.style={draw=black, very thick},
+    ray/.style={->, draw=orange, thick}
+]
 
-\begin{equation}
-    z = \cos\theta_{\max} + (1 - \cos\theta_{\max}) \cdot u, \quad \phi = 2\pi v
-\end{equation}
+% Gray out the outside of the model
+\fill[gray!15] (-3, 0.4) -- (-1.5, -0.05) -- (0, -0.2) -- (1.5, -0.05) -- (3, 0.4) -- (3, -1.0) -- (-3, -1.0) -- cycle;
 
-The direction is transformed from local cone space to world space using the tangent frame. Each ray is traced through the BVH with \texttt{optixTrace}, using $t_{\min} = 10^{-4}$ (to avoid self-intersection) and $t_{\max} = 10^{16}$. On closest hit, the parametric travel distance $t_{\max}$ is returned as the payload. The raygen program then computes the angle $\theta_i$ between the ray direction and the cone axis using $\theta_i = \arccos(\vec{d} \cdot (-\vec{\mathbf{n}}))$, clamped to a minimum of $0.001$ radians to prevent division by zero. An inverse-angle weight $w_i = 1/\theta_i$ is assigned to each hit, so that rays closer to the cone axis contribute more to the final SDF value while grazing-angle rays are downweighted. Rays that miss the mesh are discarded.
+% Draw a polygonal surface representing the mesh triangles
+\draw[surface] (-3, 0.4) -- (-1.5, -0.05) -- (0, -0.2) -- (1.5, -0.05) -- (3, 0.4);
 
-The closest-hit program (\texttt{\_\_closesthit\_\_sdf}) is called when a ray intersects a triangle. It returns the parametric hit distance $t_{\max}$ as the payload, which represents the distance the ray traveled before hitting the surface.
+% Labels for Inside and Outside
+\node[font=\small, text=black!70] at (2.5, 1.0) {Inside};
+\node[font=\small, text=black!70] at (2.5, -0.5) {Outside};
 
-The miss program sets the payload to $-1$. This program is called when a ray misses all geometry and exits into empty space. Since SDF computation only requires the hit distance of rays that actually intersect the mesh surface, rays that miss carry no useful information. The $-1$ value serves as a sentinel to distinguish misses from valid hits (which always have positive distances).
+% Central vertex
+\filldraw[black] (0, -0.2) circle (2pt) node[below] {$v_i$};
 
-Any-hit programs are disabled via \texttt{OPTIX\_RAY\_FLAG\_DISABLE\_ANYHIT}, which is passed to \texttt{optixTrace}. In NVIDIA's ray tracing architecture, BVH traversal is accelerated entirely in hardware by RT Cores. Without this flag, every time a ray intersects a triangle, the hardware must pause traversal and invoke an any-hit shader in software to determine whether the intersection is valid. This software-hardware switching causes significant performance degradation due to thread divergence and shader overhead. By disabling any-hit programs, RT Cores can operate at full throughput without interruption, as all intersections are assumed to be valid. This is appropriate for SDF computation because the mesh surface is fully opaque and every intersection is a genuine hit.
+% Normal vector (pointing inward for our SDF)
+\draw[->, draw=blue, very thick] (0, -0.2) -- (0, 2) node[right] {$-\vec{n}$};
 
-The pipeline is configured with \texttt{maxTraceDepth} = 1, limiting each ray to a single bounce. This is sufficient because each ray only needs to find the first intersection with the mesh surface. One payload value is allocated to store the hit distance, which is the only data returned from the trace.
+% Cone boundary
+\draw[draw=gray, dashed, thick] (0, -0.2) -- (-2, 2.5);
+\draw[draw=gray, dashed, thick] (0, -0.2) -- (2, 2.5);
+\draw[draw=gray, thick] (-2, 2.5) to[out=20, in=160] (2, 2.5);
+\draw[draw=gray, thick, dashed] (-2, 2.5) to[out=-20, in=-160] (2, 2.5);
 
-\section{Raw SDF Computation}
+% Random rays inside the cone, passing further through the cone's base
+\draw[ray] (0, -0.2) -- (-1.5, 3.1);
+\draw[ray] (0, -0.2) -- (-0.8, 3.4);
+\draw[ray] (0, -0.2) -- (0.2, 3.5);
+\draw[ray] (0, -0.2) -- (0.9, 3.2);
+\draw[ray] (0, -0.2) -- (1.7, 2.8);
+\draw[ray] (0, -0.2) -- (-2.1, 2.8);
+\draw[ray] (0, -0.2) -- (2.2, 2.9);
+\draw[ray] (0, -0.2) -- (-0.2, 3.6);
 
-After the ray tracing stage completes on the GPU via OptiX, the per-ray results are passed to a CUDA kernel for aggregation. Each vertex $p$ has a set of $R_p$ valid hit distances $\{d_i\}$ and corresponding weights $\{w_i\}$, where each weight is the inverse angle $w_i = 1/\theta_i$ from the cone axis. The CUDA kernel computes the raw SDF value as the weighted average of all hit distances for each vertex:
+
+
+\end{tikzpicture}
+\caption{The Ray Generator program scatters 64 rays in a conical distribution around the vertex normal, sending them inward to measure the distance to the opposite side of the mesh.}
+\label{fig:raygen_diagram}
+\end{figure}
+
+The Ray Generator program creates the rays. Instead of shooting just one ray straight down, it randomly scatters 64 rays in a cone shape (like a shotgun blast) pointing inside the model. When a ray hits something, this program records how far it traveled.
+
+
+Once a ray is generated and sent into the BVH, OptiX traverses the acceleration structure to find the nearest intersection. When the ray strikes the closest triangle, the \textbf{Closest-Hit Program} is triggered. Its entire purpose is astonishingly simple: it immediately queries the ray's maximum traveled distance (using the hardware-accelerated \texttt{optixGetRayTmax()}) and writes this raw float value directly into the ray's 32-bit payload. This single piece of data is then automatically carried back to the Ray Generator, giving us exactly the thickness measurement we need.
+
+Normally, when a ray travels through a scene, an Any-Hit program is triggered every single time the ray crosses *any* potential surface along its path, before it finds the final solid wall. This is extremely useful for things like transparent glass or leaves with see-through holes, because the Any-Hit program can check if the ray should pass straight through the transparent parts. 
+
+However, OptiX is extremely fast because we use a special trick: we completely disable these Any-Hit programs. Why? Because our 3D models are completely solid and opaque! Evaluating transparency at every single intersection is a huge waste of time. By disabling it, we let the specialized hardware RT Cores run at maximum speed and blast straight to the closest wall without stopping to ask questions. Finally, we tell OptiX to only let rays bounce once. We don't care about reflections; we just want to know where the inside wall is!
+
+The pipeline is created by \texttt{OptixRunner::CreatePipeline()} in \texttt{OptixRunner.cuh}. The PTX code is JIT-compiled via \texttt{optixModuleCreate}, then three program groups are created with entry functions \texttt{\_\_raygen\_\_sdf\_cone} and \texttt{\_\_closesthit\_\_sdf}. Key parameters: \texttt{maxTraceDepth=1}, \texttt{numPayloadValues=1}, \texttt{raysPerPoint=64}, cone angle $= 150^\circ$, Hammersley quasi-random sampling, and \texttt{OPTIX\_RAY\_FLAG\_DISABLE\_ANYHIT} for maximum RT Core throughput.
+
+\subsection{Calculate Weighted SDF}
+
+Once all the rays are finished flying around, we have a massive pile of hit distances. But remember, rays shooting straight down the middle are more trustworthy than rays shooting out at wide angles. So, we pass all these distances into a final math formula to calculate a "weighted average" for every point on the model.
 
 \begin{equation}
     \mathrm{SDF}(p) = \frac{\sum_{i=1}^{R_p} d_i \cdot w_i}{\sum_{i=1}^{R_p} w_i}
+    \label{eq:sdf_formula}
 \end{equation}
 
-This produces a single scalar value per vertex representing the local thickness of the mesh at that point.
+If a ray missed and returned a "-1", we simply throw it in the trash. If every single ray for a point missed, we just assign it a thickness of zero. 
 
-Several edge cases are handled during this aggregation. Rays that miss the mesh entirely are marked with a payload of $-1$ during ray tracing and are discarded before the weighted average is computed; they do not contribute to the SDF value. If all rays for a vertex miss (which can happen for vertices on very thin or degenerate geometry), the vertex is assigned a fallback SDF value of zero. Vertices with degenerate normals (zero-length or near-zero area faces) are assigned a fallback normal of $(0, 0, 1)$ during the normal computation stage and receive the default SDF value to prevent division by zero in the weighted average.
+The \texttt{GPUComputeRawSDF} kernel in \texttt{SDFKernels.cuh} computes the weighted average for each vertex using \texttt{blockSize=256}. Each vertex's raw SDF is calculated as shown in Equation~\ref{eq:sdf_formula}, where the weight $w_i$ is the inverse of the angle between the ray and the cone axis.
 
-\section{Normalization}
+\section{GPU Post-Processing}
 
-After calculating the SDF raw value, the SDF values must first be normalized to a consistent range. The raw SDF values are normalized to $[0, 1]$ using min-max normalization followed by logarithmic compression. First, the global minimum and maximum are computed using atomic operations. Then, for each vertex:
+After the OptiX pipeline completes its ray tracing, we are left with a raw collection of distance values. However, directly rendering these raw values often results in a visual representation that is noisy and difficult to interpret. To transform these raw distances into a clean, smooth, and visually intuitive heat map, we rely on a dedicated GPU post-processing stage. Because the first two steps---normalizing the SDF values and building the adjacency graph (CSR format)---are entirely independent, we execute them simultaneously using separate CUDA streams to maximize hardware utilization before the final smoothing step.
+
+\begin{figure}[H]
+    \centering
+    \begin{tabular}{@{}c@{}}
+        \includegraphics[width=0.6\textwidth]{images/Chapter3/postProcess/no_normalization.png} \\
+        \textbf{(a) Raw SDF} \\[3ex]
+        \includegraphics[width=0.6\textwidth]{images/Chapter3/postProcess/normalization.png} \\
+        \textbf{(b) Normalized} \\[3ex]
+        \includegraphics[width=0.6\textwidth]{images/Chapter3/postProcess/smoothed.png} \\
+        \textbf{(c) Smoothed}
+    \end{tabular}
+    \caption{The step-by-step SDF transformation pipeline.}
+    \caption*{Starting from the raw SDF, we apply normalization to map the values to a usable range, and finally execute an anisotropic smoothing pass to eliminate noise while preserving sharp features.}
+    \label{fig:postprocess_pipeline}
+\end{figure}
+
+\subsection{Normalize SDF}
+
+However, the raw thickness numbers we just calculated might range from 0.001 to 500.0, which makes them hard to colorize or display nicely. To fix this, we "normalize" the numbers. This is a fancy way of saying we squash all the numbers so that the thinnest point is exactly 0.0 and the thickest point is exactly 1.0. We also use a math trick called "logarithmic compression" which helps us preserve the tiny details in thin areas (like fingers) so they don't get drowned out by massive areas (like the torso).
 
 \begin{equation}
     \hat{v} = \frac{\mathrm{SDF}(p) - \mathrm{SDF}_{\min}}{\mathrm{SDF}_{\max} - \mathrm{SDF}_{\min}}, \qquad
-    v_{\mathrm{norm}} = \frac{\log(\alpha \hat{v} + 1)}{\log(\alpha + 1)}
+    v_{\mathrm{norm}} = \frac{\log(4.0 \cdot \hat{v} + 1)}{\log(4.0 + 1)}
 \end{equation}
 
-where $\alpha = 4.0$. The logarithmic compression preserves detail in thin regions (low SDF) while compressing the dynamic range of thick regions.
+The normalization pipeline in \texttt{SDFKernels.cuh} runs three CUDA kernels sequentially: \texttt{GPUComputeBoundingBox} finds the axis-aligned bounding box, \texttt{GPUComputeSDFMinMax} finds the minimum and maximum SDF values, and \texttt{GPUApplySDFNormalization} applies logarithmic compression with $\alpha = 4.0$. This runs on \texttt{streamNorm} in parallel with adjacency graph construction.
 
-\section{Adjacency Graph Construction}
+\subsection{Build Adjacency Graph}
 
-To reduce noise from the normalized SDF values, we apply anisotropic bilateral smoothing. However, it requires neighbor vertex information. Therefore, we represent the graph structure of a 3D model as a matrix or array. The native approach is to use an adjacency matrix: a $|V| \times |V|$ 2D array where entry $[A][B] = 1$ if vertex $A$ is connected to vertex $B$. However, the adjacency matrix has a critical drawback: for a mesh with thousands of vertices but only a few neighbors per vertex, the matrix is overwhelmingly zeros, wasting $O(|V|^2)$ memory. An adjacency list avoids this waste but scatters data across memory, causing cache misses on the GPU. CSR solves both problems: it compresses out the zeros while keeping all data in contiguous 1D arrays to optimize memory.
+Even after normalization, our thickness values might look a bit noisy or splotchy. To fix this, we want to smooth them out by blending each point with its neighbors. But here's the trick: how does the GPU know who a point's neighbors are? 
 
-A CSR graph consists of two arrays. The column indices array stores the neighbor IDs of all vertices concatenated into a single contiguous array. The row pointers array, of length $|V| + 1$, records where each vertex's neighbor list begins and ends within the column indices array. For vertex $v$, its neighbors are stored in positions \texttt{colIndices[rowPointers[v]]} through \texttt{colIndices[rowPointers[v+1] - 1]}. This structure enables efficient, cache-friendly traversal of the mesh graph on the GPU.
+We have to build a "friend list" for every point on the model. Formally, we represent the 3D mesh as a graph where vertices are nodes and the triangle edges connecting them are the graph's edges. A naive way to store this is a massive grid checking every point against every other point, called the adjacency matrix. For a graph with $|V|$ vertices, the adjacency matrix $A$ is a $|V| \times |V|$ square matrix where the element $A_{i,j}$ is $1$ if there is an edge connecting vertex $i$ to vertex $j$, and $0$ otherwise.
 
-The mesh adjacency graph is built on the GPU in three steps. First, edge generation produces 6 directed edges per face (both directions for each of 3 edges), packed as 64-bit integers with \texttt{(src << 32) | dst}. Since adjacent triangles share edges, the same edge appears in multiple faces (e.g., two triangles sharing edge AB both generate A→B and B→A). Second, CUB's \texttt{DeviceRadixSort} sorts edges lexicographically, and \texttt{DeviceSelect::Unique} removes these duplicates so each edge is stored only once. Third, a kernel iterates over the sorted unique edges to build the CSR representation: offset array \texttt{d\_nbrOffsets} and neighbor list \texttt{d\_nbrLists}.
+This requires $O(|V|^2)$ space complexity. This is absolutely catastrophic for large models because a typical vertex is only neighbors with a handful of other vertices (usually around 6), meaning the vast majority of the matrix is filled with zeros! Allocating memory for a full matrix would mean storing billions of zero values, wasting precious GPU VRAM and bandwidth. For example, here is a small adjacency matrix where the 0s (representing no connection, and therefore wasted space on the GPU) are colored red:
 
-\section{Anisotropic Bilateral Smoothing}
+\begin{equation}
+\label{eq:adj_matrix}
+A = \begin{bmatrix}
+1 & 1 & \textcolor{red}{0} & \textcolor{red}{0} \\
+1 & 1 & 1 & \textcolor{red}{0} \\
+\textcolor{red}{0} & 1 & 1 & 1 \\
+\textcolor{red}{0} & \textcolor{red}{0} & 1 & 1
+\end{bmatrix}
+\end{equation}
 
-While the graph matrix representation is completed, the graph is ready for smoothing. A smoothing filter is needed to produce clean, visually coherent thickness maps. However, standard Gaussian smoothing blurs across sharp thickness boundaries, erasing important features such as the edges of thin structures or the transition between thick and thin regions. Anisotropic bilateral filtering solves this problem by combining spatial proximity with value similarity: it smooths regions where nearby vertices have similar SDF values while preserving sharp transitions where SDF values differ significantly.
+Instead, we use a clever format called CSR (Compressed Sparse Row). It basically crushes the friend list down into a single, tightly packed line of data, skipping all the red zeros. This drops the memory complexity from $O(|V|^2)$ down to $O(|V|)$, which keeps the memory usage tiny and makes the GPU extremely happy because it doesn't have to jump around to find data.
 
-The bilateral filter operates on the mesh graph for 3 iterations. For each vertex $p$ with position $\mathbf{x}_p$ and SDF value $v_p$, the filtered value is computed as: A smoothing filter is needed to produce clean, visually coherent thickness maps. However, standard Gaussian smoothing blurs across sharp thickness boundaries, erasing important features such as the edges of thin structures or the transition between thick and thin regions. Anisotropic bilateral filtering solves this problem by combining spatial proximity with value similarity: it smooths regions where nearby vertices have similar SDF values while preserving sharp transitions where SDF values differ significantly.
+To achieve this compression, we must first sort the edges. Why? Because the GPU generates edges randomly as it reads triangles, but the CSR format requires all of vertex $i$'s friends to be grouped together sequentially in memory. Once sorted, the CSR format splits the matrix into three separate 1D arrays. The \texttt{values} array stores only the non-zero elements from left to right, top to bottom. In our adjacency matrix, these are all the $1$s indicating that an edge connection exists. The \texttt{col\_ind} (Column Indices) array stores the original column number for every entry in the \texttt{values} array, telling us exactly \textit{which} vertex is the neighbor. The \texttt{row\_ptr} (Row Pointers) array acts as a master index where the $i$-th entry tells the GPU the exact starting position of vertex $i$'s friend list inside the \texttt{col\_ind} array. By looking at the difference between \texttt{row\_ptr}[$i+1$] and \texttt{row\_ptr}[$i$], the GPU instantly knows exactly how many neighbors vertex $i$ has.
 
-The bilateral filter operates on the mesh graph for 3 iterations. For each vertex $p$ with position $\mathbf{x}_p$ and SDF value $v_p$, the filtered value is computed as:
+\begin{figure}[H]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+    >=stealth,
+    box/.style={rectangle, draw=black!60, fill=blue!8, minimum width=0.8cm, minimum height=0.7cm, font=\footnotesize, anchor=center},
+    arr/.style={->, thick, gray}
+]
+
+% The sparse matrix visual has been removed; only the CSR arrays remain.
+
+% CSR arrays
+\node[font=\footnotesize\bfseries, anchor=east] at (4.5, 2.5) {CSR};
+
+% row_ptr
+\node[font=\footnotesize, anchor=east] at (4.5, 1.2) {row\_ptr};
+\foreach \val [count=\i from 0] in {0,2,5,8,10} {
+    \node[box, fill=green!20] at (5.0 + \i*1.1, 1.2) {\val};
+}
+
+% col_ind
+\node[font=\footnotesize, anchor=east] at (4.5, 0.3) {col\_ind};
+\foreach \val [count=\i from 0] in {0,1,0,1,2,1,2,3,2,3} {
+    \node[box, fill=orange!20] at (5.0 + \i*1.1, 0.3) {\val};
+}
+
+% values
+\node[font=\footnotesize, anchor=east] at (4.5, -0.6) {values};
+\foreach \val [count=\i from 0] in {1,1,1,1,1,1,1,1,1,1} {
+    \node[box, fill=cyan!20] at (5.0 + \i*1.1, -0.6) {\val};
+}
+
+% Mapping arrows removed per user request
+
+\end{tikzpicture}%
+}
+\caption{CSR (Compressed Sparse Row) memory layout for the adjacency matrix in Equation \ref{eq:adj_matrix}.}
+\label{fig:csr_layout}
+\end{figure}
+
+Figure \ref{fig:csr_layout} depicts how the 2D adjacency matrix is flattened into three dense 1D arrays. The \texttt{row\_ptr} array indicates the starting index of each vertex's neighbor list, the \texttt{col\_ind} array stores the actual neighbor vertex indices, and the \texttt{values} array holds the connection flags (which are all $1$ in our unweighted graph).
+
+This is built entirely on the GPU using three steps in \texttt{SDFKernels.cuh}. First, the \texttt{GPUGenerateEdges} kernel generates 6 directed edges per triangle face (because a triangle has 3 undirected edges, and we need 2 directed edges---one in each direction---for every undirected edge to allow two-way neighbor lookups). Then, NVIDIA's CUB library sorts and deduplicates these edges via \texttt{cub::DeviceRadixSort} and \texttt{cub::DeviceSelect::Unique}. Finally, \texttt{GPUExtractCSR} converts the sorted unique edges into CSR arrays: \texttt{d\_nbrOffsets[V+1]} and \texttt{d\_nbrLists}. This runs on a dedicated \texttt{streamCSR} in parallel with normalization.
+
+\subsection{Smooth SDF}
+
+Now that we know everyone's neighbor, we can apply our smoothing filter. But we don't want a standard "blur" filter. A basic blur would smear the thickness values across sharp edges, turning crisp details into a muddy mess. Instead, we use an "Anisotropic Bilateral Filter". 
+
+This sounds complicated, but it's actually very intuitive. It blends points together, but only if they are physically close to each other AND they have a similar thickness value. If two points are right next to each other but one is super thick and the other is super thin (like a sharp edge), the filter says "Stop! Don't blend these!" and leaves the sharp edge perfectly crisp. 
+
+We use a fancy mathematical formula to calculate exactly how much to blend these points together:
 
 \begin{equation}
     v_p^{\mathrm{out}} = \frac{\sum_{q \in \mathcal{N}(p)} \exp\!\left(-\frac{\|\mathbf{x}_p - \mathbf{x}_q\|^2}{2\sigma_s^2}\right) \exp\!\left(-\frac{(v_p - v_q)^2}{2\sigma_r^2}\right) v_q}{\sum_{q \in \mathcal{N}(p)} \exp\!\left(-\frac{\|\mathbf{x}_p - \mathbf{x}_q\|^2}{2\sigma_s^2}\right) \exp\!\left(-\frac{(v_p - v_q)^2}{2\sigma_r^2}\right)}
 \end{equation}
 
-where $\mathcal{N}(p)$ is the set of neighboring vertices in the CSR graph. The filter uses two weight functions. The spatial weight $\exp(-\|\mathbf{x}_p - \mathbf{x}_q\|^2 / 2\sigma_s^2)$ favors nearby vertices, with $\sigma_s = 0.02 \cdot d_{\mathrm{bbox}}$ (2\% of the bounding box diagonal) controlling the spatial extent of smoothing. The range weight $\exp(-(v_p - v_q)^2 / 2\sigma_r^2)$ favors vertices with similar SDF values, with $\sigma_r = 0.1$ preventing blending across sharp thickness boundaries. This combination ensures that smoothing occurs within uniform-thickness regions while preserving features such as the edges of thin structures. The filtering is implemented as a CUDA kernel that iterates over the CSR neighbor list for each vertex, accumulating weighted sums in parallel.
+Why the scary exponential ($\exp$) math? It acts like a smooth dimmer switch. Instead of a hard cut-off (like "blend 100\% if close, 0\% if far"), it smoothly fades the blending power the further away a friend gets. You might also notice the $2\sigma^2$ at the bottom of the fractions. This acts as our main control knob (derived from the variance of a Gaussian bell curve). A small $\sigma$ makes the dimmer switch drop to 0\% very quickly, while a large $\sigma$ creates a very long, smooth fade-out across many neighbors. By running this dimmer-switch filter over the whole mesh a few times, we get a gorgeous, noise-free thickness map that still preserves all the sharp, realistic details of the 3D model!
+
+This is implemented in the \texttt{AnisotropicSmoothingKernel} CUDA kernel in \texttt{SDFKernels.cuh}. We run 3 smoothing iterations with \texttt{sigmaSpatial} set to 2\% of the model's bounding box diagonal, and \texttt{sigmaRange} set to 0.1. To avoid read-write conflicts, we use a double-buffered ping-pong approach (\texttt{d\_sdfBuf1} $\leftrightarrow$ \texttt{d\_sdfBuf2}), swapping input and output between each iteration.

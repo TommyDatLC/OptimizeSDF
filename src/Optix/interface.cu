@@ -62,7 +62,7 @@ inline void DestroyOptixGlobalState(OptixGlobalState& state) {
     optixDeviceContextDestroy(state.context);
 }
 
-inline float* RunOptixConeRayCasting(const OptixGlobalState& state, Matrix<float>& vMat, Matrix<unsigned int>& iMat, Matrix<float>& nMat, int raysPerPoint, float coneAngleRadian) {
+inline float* RunOptixConeRayCasting(const OptixGlobalState& state, Matrix<float>& vMat, Matrix<unsigned int>& iMat, Matrix<float>& nMat, int raysPerPoint, float coneAngleRadian, cudaStream_t streamBVH, cudaStream_t streamNormal) {
     std::cout << "[DEBUG] [SDF Pipeline] Bắt đầu khởi tạo OptiX Pipeline và Build BVH...\n";
     int numVertices = vMat.Height;
     int numFaces = iMat.Height;
@@ -75,9 +75,14 @@ inline float* RunOptixConeRayCasting(const OptixGlobalState& state, Matrix<float
 
     auto t_bvh_start = std::chrono::high_resolution_clock::now();
     CUdeviceptr d_tempBuffer, d_gasOutputBuffer;
-    OptixTraversableHandle bvhHandle = OptixRunner::BuildBVH(state.context, d_vertex_ptr, d_index_ptr, numVertices, numFaces, d_tempBuffer, d_gasOutputBuffer);
+    OptixTraversableHandle bvhHandle = OptixRunner::BuildBVH(state.context, d_vertex_ptr, d_index_ptr, numVertices, numFaces, d_tempBuffer, d_gasOutputBuffer, streamBVH);
+    
+    // Đồng bộ cả 2 luồng trước khi chạy OptiX Ray Tracing vì Ray Tracing cần cả Cây BVH và Normal
+    cudaStreamSynchronize(streamBVH);
+    cudaStreamSynchronize(streamNormal);
+    
     auto t_bvh_done = std::chrono::high_resolution_clock::now();
-    std::cout << "[DEBUG] [SDF Pipeline] Thời gian Xây dựng BVH: "
+    std::cout << "[DEBUG] [SDF Pipeline] Thời gian Chuẩn bị BVH + Normal (Chạy Song Song): "
               << std::chrono::duration<double>(t_bvh_done - t_bvh_start).count() << " giây\n";
 
     float* d_rawSDF = OptixRunner::LaunchOptixAndCUB(
@@ -95,7 +100,7 @@ inline float* RunOptixConeRayCasting(const OptixGlobalState& state, Matrix<float
 // -----------------------------------------------------------------------------
 // HÀM CHÍNH GỌI TỪ NGOÀI VÀO (OPTIX + LÀM MƯỢT TRÊN GPU)
 // -----------------------------------------------------------------------------
-inline void CaculatingSDFUsingOptix(Model& model, const OptixGlobalState& state, int input_raysPerPoint = 64, float input_angle = 120.0) {
+inline float CaculatingSDFUsingOptix(Model& model, const OptixGlobalState& state, int input_raysPerPoint = 64, float input_angle = 120.0) {
     std::cout << "[DEBUG] [SDF Pipeline] Khởi chạy toàn bộ quy trình tính toán SDF bằng OptiX...\n";
     float coneAngle = input_angle * (3.14159265f / 180.0f);
 
@@ -105,123 +110,125 @@ inline void CaculatingSDFUsingOptix(Model& model, const OptixGlobalState& state,
     int numFaces = indices.Height;
 
     auto start = std::chrono::high_resolution_clock::now();
-    std::cout << "[DEBUG] [SDF Pipeline] Đang cập nhật Vertex Normal cho Model...\n";
-    model.UpdateNormal();
+    std::cout << "[DEBUG] [SDF Pipeline] Đang cập nhật Vertex Normal và Build BVH (Song song bằng CUDA Streams)...\n";
+    
+    cudaStream_t streamNormal, streamBVH;
+    cudaStreamCreate(&streamNormal);
+    cudaStreamCreate(&streamBVH);
+
+    model.UpdateNormal(streamNormal);
     Matrix<float>& vNormal = model.GetVertexNormalMatrix();
-    auto t_normal = std::chrono::high_resolution_clock::now();
-    std::cout << "[DEBUG] [SDF Pipeline] Thời gian Cập nhật Normal: " << std::chrono::duration<double>(t_normal - start).count() << " giây\n";
 
-
-    // 1. TÍNH SDF THÔ TỪ OPTIX
+    // 1. TÍNH SDF THÔ TỪ OPTIX (Bao gồm cả chờ Build BVH)
     std::cout << "[DEBUG] [SDF Pipeline] Đang tiến hành OptiX Ray Tracing...\n";
-    float* d_rawSDF = RunOptixConeRayCasting(state, vertices, indices, vNormal, input_raysPerPoint, coneAngle);
+    float* d_rawSDF = RunOptixConeRayCasting(state, vertices, indices, vNormal, input_raysPerPoint, coneAngle, streamBVH, streamNormal);
+    
+    cudaStreamDestroy(streamNormal);
+    cudaStreamDestroy(streamBVH);
 
     float firstRawSDF = 0.0f;
     CUDA_CHECK(cudaMemcpy(&firstRawSDF, d_rawSDF, sizeof(float), cudaMemcpyDeviceToHost));
     auto t_optix_done = std::chrono::high_resolution_clock::now();
     std::cout << "[DEBUG] [SDF Pipeline] Tính toán OptiX hoàn tất!\n";
-    std::cout << "[DEBUG] [SDF Pipeline] Giá trị rawSDF của đỉnh đầu tiên (vừa nhận về từ GPU): " << firstRawSDF << "\n";
     
     // =========================================================================
-    // 2. CHUẨN BỊ MẠNG LƯỚI GRAPH CHO VIỆC SMOOTHING TRÊN GPU
+    // 2. CHUẨN BỊ MẠNG LƯỚI GRAPH VÀ NORMALIZATION SONG SONG
     // =========================================================================
-    std::cout << "Đóng gói mạng lưới CSR Graph bằng GPU CUB...\n";
-    auto t_alloc_csr_start = std::chrono::high_resolution_clock::now();
+    std::cout << "Đóng gói mạng lưới CSR Graph và Chuẩn hóa SDF song song...\n";
+    
+    cudaStream_t streamCSR, streamNorm;
+    CUDA_CHECK(cudaStreamCreate(&streamCSR));
+    CUDA_CHECK(cudaStreamCreate(&streamNorm));
+
+    auto t_alloc_start = std::chrono::high_resolution_clock::now();
     int numEdges = numFaces * 6;
-    uint64_t *d_edges, *d_sortedEdges;
+    uint64_t *d_edges, *d_sortedEdges, *d_uniqueEdges;
+    int *d_numUniqueEdges, *d_nbrOffsets, *d_nbrLists;
     CUDA_CHECK(cudaMalloc(&d_edges, numEdges * sizeof(uint64_t)));
     CUDA_CHECK(cudaMalloc(&d_sortedEdges, numEdges * sizeof(uint64_t)));
-    
-    uint64_t *d_uniqueEdges;
-    int *d_numUniqueEdges;
     CUDA_CHECK(cudaMalloc(&d_uniqueEdges, numEdges * sizeof(uint64_t)));
     CUDA_CHECK(cudaMalloc(&d_numUniqueEdges, sizeof(int)));
-
-    int *d_nbrOffsets, *d_nbrLists;
     CUDA_CHECK(cudaMalloc((void**)&d_nbrOffsets, (numVertices + 1) * sizeof(int)));
-    // We don't know numUniqueEdges yet, so we allocate maximum possible size for d_nbrLists
     CUDA_CHECK(cudaMalloc((void**)&d_nbrLists, numEdges * sizeof(int)));
-    
-    auto t_alloc_csr_end = std::chrono::high_resolution_clock::now();
-    std::cout << "[DEBUG] [SDF Pipeline] Thời gian Cấp phát bộ nhớ cho CSR Graph (cudaMalloc): " << std::chrono::duration<double>(t_alloc_csr_end - t_alloc_csr_start).count() << " giây\n";
 
+    float* d_minMaxBox;
+    CUDA_CHECK(cudaMalloc((void**)&d_minMaxBox, 6 * sizeof(float)));
+    float initBox[6] = {1e15f, -1e15f, 1e15f, -1e15f, 1e15f, -1e15f};
+    CUDA_CHECK(cudaMemcpyAsync(d_minMaxBox, initBox, 6 * sizeof(float), cudaMemcpyHostToDevice, streamNorm));
+
+    float* d_sdfBuf1 = d_rawSDF; 
+    float* d_sdfBuf2;
+    CUDA_CHECK(cudaMalloc((void**)&d_sdfBuf2, numVertices * sizeof(float)));
+
+    float* d_minMaxSDF;
+    CUDA_CHECK(cudaMalloc((void**)&d_minMaxSDF, 2 * sizeof(float)));
+    float initSDF[2] = {1e15f, -1e15f};
+    CUDA_CHECK(cudaMemcpyAsync(d_minMaxSDF, initSDF, 2 * sizeof(float), cudaMemcpyHostToDevice, streamNorm));
+
+    auto t_alloc_end = std::chrono::high_resolution_clock::now();
+    std::cout << "[DEBUG] [SDF Pipeline] Thời gian Cấp phát bộ nhớ chung (cudaMalloc): " << std::chrono::duration<double>(t_alloc_end - t_alloc_start).count() << " giây\n";
+
+    // --- THỰC THI CSR (streamCSR) ---
     int blockSize = 256;
     int gridSizeFaces = (numFaces + blockSize - 1) / blockSize;
-    GPUGenerateEdges<<<gridSizeFaces, blockSize>>>((const uint3*)indices.getDevicePtr(), numFaces, d_edges);
-    CUDA_CHECK(cudaDeviceSynchronize());
+    GPUGenerateEdges<<<gridSizeFaces, blockSize, 0, streamCSR>>>((const uint3*)indices.getDevicePtr(), numFaces, d_edges);
 
-    void *d_temp_storage_sort = nullptr;
-    size_t temp_storage_bytes_sort = 0;
-    cub::DeviceRadixSort::SortKeys(d_temp_storage_sort, temp_storage_bytes_sort, d_edges, d_sortedEdges, numEdges);
+    void *d_temp_storage_sort = nullptr; size_t temp_storage_bytes_sort = 0;
+    cub::DeviceRadixSort::SortKeys(d_temp_storage_sort, temp_storage_bytes_sort, d_edges, d_sortedEdges, numEdges, 0, sizeof(uint64_t)*8, streamCSR);
     CUDA_CHECK(cudaMalloc(&d_temp_storage_sort, temp_storage_bytes_sort));
-    cub::DeviceRadixSort::SortKeys(d_temp_storage_sort, temp_storage_bytes_sort, d_edges, d_sortedEdges, numEdges);
-    CUDA_CHECK(cudaDeviceSynchronize());
+    cub::DeviceRadixSort::SortKeys(d_temp_storage_sort, temp_storage_bytes_sort, d_edges, d_sortedEdges, numEdges, 0, sizeof(uint64_t)*8, streamCSR);
 
-    void *d_temp_storage_unique = nullptr;
-    size_t temp_storage_bytes_unique = 0;
-    cub::DeviceSelect::Unique(d_temp_storage_unique, temp_storage_bytes_unique, d_sortedEdges, d_uniqueEdges, d_numUniqueEdges, numEdges);
+    void *d_temp_storage_unique = nullptr; size_t temp_storage_bytes_unique = 0;
+    cub::DeviceSelect::Unique(d_temp_storage_unique, temp_storage_bytes_unique, d_sortedEdges, d_uniqueEdges, d_numUniqueEdges, numEdges, streamCSR);
     CUDA_CHECK(cudaMalloc(&d_temp_storage_unique, temp_storage_bytes_unique));
-    cub::DeviceSelect::Unique(d_temp_storage_unique, temp_storage_bytes_unique, d_sortedEdges, d_uniqueEdges, d_numUniqueEdges, numEdges);
-    CUDA_CHECK(cudaDeviceSynchronize());
+    cub::DeviceSelect::Unique(d_temp_storage_unique, temp_storage_bytes_unique, d_sortedEdges, d_uniqueEdges, d_numUniqueEdges, numEdges, streamCSR);
 
     int numUniqueEdges = 0;
-    CUDA_CHECK(cudaMemcpy(&numUniqueEdges, d_numUniqueEdges, sizeof(int), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpyAsync(&numUniqueEdges, d_numUniqueEdges, sizeof(int), cudaMemcpyDeviceToHost, streamCSR));
 
+    // --- THỰC THI NORMALIZATION (streamNorm) ---
+    int gridSizeVerts = (numVertices + blockSize - 1) / blockSize;
+    GPUComputeBoundingBox<<<gridSizeVerts, blockSize, 0, streamNorm>>>((const float3*)vertices.getDevicePtr(), numVertices, d_minMaxBox);
+    
+    float h_minMaxBox[6];
+    CUDA_CHECK(cudaMemcpyAsync(h_minMaxBox, d_minMaxBox, 6 * sizeof(float), cudaMemcpyDeviceToHost, streamNorm));
+
+    GPUComputeSDFMinMax<<<gridSizeVerts, blockSize, 0, streamNorm>>>(d_sdfBuf1, numVertices, d_minMaxSDF);
+    GPUApplySDFNormalization<<<gridSizeVerts, blockSize, 0, streamNorm>>>(d_sdfBuf1, numVertices, d_minMaxSDF);
+
+    // --- ĐỒNG BỘ HAI STREAM ---
+    CUDA_CHECK(cudaStreamSynchronize(streamCSR));
+    CUDA_CHECK(cudaStreamSynchronize(streamNorm));
+
+    // Tiếp tục hoàn tất CSR sau khi có numUniqueEdges
     int gridSizeUnique = (numUniqueEdges + blockSize - 1) / blockSize;
-    GPUExtractCSR<<<gridSizeUnique, blockSize>>>(d_uniqueEdges, numUniqueEdges, d_nbrOffsets, d_nbrLists, numVertices);
-    CUDA_CHECK(cudaDeviceSynchronize());
-    auto t_csr = std::chrono::high_resolution_clock::now();
-    std::cout << "[DEBUG] [SDF Pipeline] Thời gian Xây dựng CSR Graph: " << std::chrono::duration<double>(t_csr - t_optix_done).count() << " giây\n";
+    GPUExtractCSR<<<gridSizeUnique, blockSize, 0, streamCSR>>>(d_uniqueEdges, numUniqueEdges, d_nbrOffsets, d_nbrLists, numVertices);
+    CUDA_CHECK(cudaStreamSynchronize(streamCSR));
+
+    auto t_parallel_done = std::chrono::high_resolution_clock::now();
+    std::cout << "[DEBUG] [SDF Pipeline] Thời gian thực thi CSR & Normalization song song: " << std::chrono::duration<double>(t_parallel_done - t_optix_done).count() << " giây\n";
 
     cudaFree(d_edges); cudaFree(d_sortedEdges); cudaFree(d_temp_storage_sort);
     cudaFree(d_uniqueEdges); cudaFree(d_numUniqueEdges); cudaFree(d_temp_storage_unique);
+    cudaFree(d_minMaxBox); cudaFree(d_minMaxSDF);
+
+    CUDA_CHECK(cudaStreamDestroy(streamCSR));
+    CUDA_CHECK(cudaStreamDestroy(streamNorm));
 
 //     =========================================================================
-//     3. CHUẨN HÓA VÀ THỰC THI SMOOTHING BẰNG KERNEL TRÊN VRAM CỦA GPU
-  //   =========================================================================
+//     3. THỰC THI SMOOTHING BẰNG KERNEL TRÊN VRAM CỦA GPU
+//     =========================================================================
     std::cout << "Khởi động Anisotropic Smoothing (GPU)...\n";
-
-//     TÍNH Bounding Box Diagonal và Normalization trên GPU
-     auto t_alloc_smooth_start = std::chrono::high_resolution_clock::now();
-     float* d_minMaxBox;
-     CUDA_CHECK(cudaMalloc((void**)&d_minMaxBox, 6 * sizeof(float)));
-     float initBox[6] = {1e15f, -1e15f, 1e15f, -1e15f, 1e15f, -1e15f};
-     CUDA_CHECK(cudaMemcpy(d_minMaxBox, initBox, 6 * sizeof(float), cudaMemcpyHostToDevice));
-
-     // Tái sử dụng vùng nhớ GPU đã cấp từ OptiX/CUB pipeline!
-     float* d_sdfBuf1 = d_rawSDF; 
-     float* d_sdfBuf2;
-     cudaMalloc((void**)&d_sdfBuf2, numVertices * sizeof(float));
-
-     float* d_minMaxSDF;
-     CUDA_CHECK(cudaMalloc((void**)&d_minMaxSDF, 2 * sizeof(float)));
-     float initSDF[2] = {1e15f, -1e15f};
-     CUDA_CHECK(cudaMemcpy(d_minMaxSDF, initSDF, 2 * sizeof(float), cudaMemcpyHostToDevice));
-     auto t_alloc_smooth_end = std::chrono::high_resolution_clock::now();
-     std::cout << "[DEBUG] [SDF Pipeline] Thời gian Cấp phát bộ nhớ cho Smoothing (cudaMalloc + Memcpy): " << std::chrono::duration<double>(t_alloc_smooth_end - t_alloc_smooth_start).count() << " giây\n";
-
-     int gridSizeVerts = (numVertices + blockSize - 1) / blockSize;
-     GPUComputeBoundingBox<<<gridSizeVerts, blockSize>>>((const float3*)vertices.getDevicePtr(), numVertices, d_minMaxBox);
-     
-     float h_minMaxBox[6];
-     CUDA_CHECK(cudaMemcpy(h_minMaxBox, d_minMaxBox, 6 * sizeof(float), cudaMemcpyDeviceToHost));
-     cudaFree(d_minMaxBox);
-     
-     float dx = h_minMaxBox[1] - h_minMaxBox[0];
-     float dy = h_minMaxBox[3] - h_minMaxBox[2];
-     float dz = h_minMaxBox[5] - h_minMaxBox[4];
-     float bboxDiagonal = std::sqrt(dx*dx + dy*dy + dz*dz);
-
-     GPUComputeSDFMinMax<<<gridSizeVerts, blockSize>>>(d_sdfBuf1, numVertices, d_minMaxSDF);
-     GPUApplySDFNormalization<<<gridSizeVerts, blockSize>>>(d_sdfBuf1, numVertices, d_minMaxSDF);
-     CUDA_CHECK(cudaDeviceSynchronize());
-     cudaFree(d_minMaxSDF);
+    float dx = h_minMaxBox[1] - h_minMaxBox[0];
+    float dy = h_minMaxBox[3] - h_minMaxBox[2];
+    float dz = h_minMaxBox[5] - h_minMaxBox[4];
+    float bboxDiagonal = std::sqrt(dx*dx + dy*dy + dz*dz);
 
    //  COMMENT TEMPORARILY TO TEST rawSDF
 
      blockSize = 256;
      int gridSize = (numVertices + blockSize - 1) / blockSize;
-     int numIterations = 3;
+     int numIterations = 3; // Đã bật lại smoothing với 3 iterations theo yêu cầu
      float sigmaSpatial = bboxDiagonal * 0.02f; // Tính sigma không gian động dựa trên bounding box
      float sigmaRange = 0.1f; // sigmaRange = 0.1f chuẩn hóa cho range [0, 1]
 
@@ -239,7 +246,7 @@ inline void CaculatingSDFUsingOptix(Model& model, const OptixGlobalState& state,
          cudaDeviceSynchronize();
      }
     auto t_smooth = std::chrono::high_resolution_clock::now();
-    std::cout << "[DEBUG] [SDF Pipeline] Thời gian Làm mượt (Anisotropic Smoothing): " << std::chrono::duration<double>(t_smooth - t_csr).count() << " giây\n";
+    std::cout << "[DEBUG] [SDF Pipeline] Thời gian Làm mượt (Anisotropic Smoothing): " << std::chrono::duration<double>(t_smooth - t_parallel_done).count() << " giây\n";
 
     auto stop = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> duration = stop - start;
@@ -256,5 +263,6 @@ inline void CaculatingSDFUsingOptix(Model& model, const OptixGlobalState& state,
     }
     model.SetShowHeatMap(true);
     model.AddToScene("Optix_SDF_Model_Smoothed", true);
+    return duration.count();
 }
 #endif

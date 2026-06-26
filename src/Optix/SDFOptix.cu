@@ -15,22 +15,6 @@
 extern "C" __constant__ Params params;
 
 // =========================================================================
-// THUẬT TOÁN HAMMERSLEY 2D (UNIFORM SAMPLING)
-// =========================================================================
-__device__ inline float radicalInverse_VdC(unsigned int bits) {
-    bits = (bits << 16u) | (bits >> 16u);
-    bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
-    bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
-    bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
-    bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
-    return float(bits) * 2.3283064365386963e-10f;
-}
-
-__device__ inline float2 hammersley2d(unsigned int i, unsigned int N) {
-    return make_float2(float(i) / float(N), radicalInverse_VdC(i));
-}
-
-// =========================================================================
 // RAYGEN SHADER: BẮN TIA VÀ TÍNH TOÁN SDF
 // =========================================================================
 extern "C" __global__ void __raygen__sdf_cone() {
@@ -53,7 +37,7 @@ extern "C" __global__ void __raygen__sdf_cone() {
     int baseIdx = idx.x * rayLimit;
 
     for (int i = 0; i < rayLimit; ++i) {
-        float2 uv = hammersley2d((unsigned int)i, (unsigned int)rayLimit);
+        float2 uv = params.hammersleyUVs[i];
 
         float z = cosThetaMax + (1.0f - cosThetaMax) * uv.x;
         float phi = 2.0f * M_PIf * uv.y;

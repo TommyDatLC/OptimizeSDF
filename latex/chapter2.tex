@@ -1,88 +1,26 @@
 \chapter{Materials and Technologies}
 
-This chapter introduces the core technologies used to implement the high-performance SDF computation pipeline. We describe the CUDA parallel computing platform, the NVIDIA OptiX ray tracing framework, and the dataset of 3D models used for evaluation.
+This chapter introduces the core technologies we used to build our super-fast SDF calculator. We'll talk about CUDA (our parallel computing tool), NVIDIA CUB (our high-performance sorting library), NVIDIA OptiX (our ray tracing engine), and the 3D models we used for testing.
 
 \section{CUDA}
 
-CUDA (Compute Unified Device Architecture) \cite{cuda} is NVIDIA's parallel computing platform. In this project, CUDA is used for kernel execution (launching massively parallel kernels for normal computation, SDF normalization, and anisotropic smoothing), memory management (allocating and managing GPU memory for mesh data, intermediate results, and output buffers), and the CUB library (using CUB's device-wide primitives for radix sort and unique operations when building the mesh adjacency graph in CSR format).
+Think of your computer's main processor (CPU) like a brilliant professor. They can solve very complex problems, but they can only do one or two at a time. Now, think of a Graphics Processing Unit (GPU) like an army of thousands of elementary school students. Individually, they aren't as smart as the professor, but if you give them thousands of simple math problems, they will finish them all instantly because they work together at the exact same time!
 
-The key CUDA kernels implemented in this project include \texttt{GPUComputeBoundingBox} (computes the mesh bounding box using atomic min/max operations), \texttt{GPUComputeSDFMinMax} and \texttt{GPUApplySDFNormalization} (min-max normalization with logarithmic compression), \texttt{GPUGenerateEdges} and \texttt{GPUExtractCSR} (constructs the Compressed Sparse Row adjacency graph), and \texttt{AnisotropicSmoothingKernel} (bilateral smoothing kernel operating on the mesh graph).
+CUDA \cite{cuda} is the special programming interface created by NVIDIA that lets us boss around this army of students. To maximize efficiency, our pipeline heavily utilizes \textbf{CUDA streams}. A stream is essentially an independent queue of commands for the GPU. By default, commands are executed sequentially in a single main stream. However, by creating multiple custom streams, we can launch independent tasks---such as computing vertex normals and building the OptiX BVH---at the exact same time. The GPU executes these streams concurrently, overlapping the workload and significantly reducing the overall execution time of our computation pipeline.
 
-\section{NVIDIA OptiX}
+\subsection{NVIDIA CUB}
 
-NVIDIA OptiX \cite{optix} is a high-level framework for ray tracing on NVIDIA GPUs. It provides hardware-accelerated ray tracing by leveraging NVIDIA RT Cores (available on Turing, Ampere, and newer architectures) to accelerate ray-triangle intersection tests in hardware. It automatically builds and maintains Bounding Volume Hierarchy (BVH) acceleration structures, enabling $O(\log F)$ ray-triangle intersection queries. The framework supports programmable shaders, allowing custom ray generation, miss, and closest-hit programs written in CUDA. It also enables zero-copy computation, where data remains on the GPU throughout the pipeline, eliminating host-device transfer overhead.
+If CUDA is the language we use to boss the students around, NVIDIA CUB (CUDA Unbound) \cite{cub} is like giving them a highly organized playbook for team exercises. When thousands of threads need to cooperate on a single massive task---like sorting a giant list of edges or finding unique elements---writing that coordination code from scratch is incredibly difficult and prone to errors. CUB provides a set of highly optimized, ready-to-use algorithms that allow our GPU threads to work together flawlessly. We rely on CUB's device-level algorithms (specifically \texttt{DeviceRadixSort} and \texttt{DeviceSelect::Unique}) during our post-processing stage to rapidly sort and deduplicate millions of triangle edges, enabling us to build our adjacency graph in record time.
 
-\begin{figure}[ht]
-\centering
-\begin{tikzpicture}[
-    >=stealth,
-    box/.style={
-        rectangle,
-        rounded corners=3pt,
-        draw=red!60!black,
-        fill=red!8,
-        text width=5.5cm,
-        minimum height=0.7cm,
-        align=center,
-        font=\small,
-        inner sep=2pt
-    },
-    arr/.style={
-        ->,
-        -{stealth[length=2.5mm,width=2mm]}
-    }
-]
+\subsection{NVIDIA OptiX}
 
-\node[box] (cuda) at (0, 0) {\textbf{Initialize CUDA}\\{\footnotesize Set device, query capabilities}};
-\node[box] (ctx) at (0, -1.1) {\textbf{Create OptiX Context}\\{\footnotesize \texttt{optixDeviceContextCreate}}};
-\node[box] (module) at (0, -2.2) {\textbf{Compile Module}\\{\footnotesize PTX $\to$ \texttt{optixModuleCreate}}};
-\node[box] (prog) at (0, -3.3) {\textbf{Create Program Groups}\\{\footnotesize Raygen, Miss, Hitgroup}};
-\node[box] (pipe) at (0, -4.4) {\textbf{Link Pipeline}\\{\footnotesize \texttt{optixPipelineCreate}}};
-\node[box] (sbt) at (0, -5.5) {\textbf{Build Shader Binding Table}\\{\footnotesize Map shaders to geometry}};
-\node[box] (bvh) at (0, -6.6) {\textbf{Build BVH}\\{\footnotesize \texttt{optixAccelBuild}}};
-\node[box] (launch) at (0, -7.7) {\textbf{Launch Rays}\\{\footnotesize \texttt{optixLaunch}}};
+But what happens when we need to shoot rays to calculate thickness? Enter NVIDIA OptiX \cite{optix}. OptiX is a specialized tool designed specifically for ray tracing. Modern NVIDIA graphics cards have dedicated hardware built into them called "RT Cores." These cores are physically designed to do one thing exceptionally well: calculate where a ray hits a triangle. OptiX is the secret key that unlocks this hardware!
 
-\draw[arr] (cuda) -- (ctx);
-\draw[arr] (ctx) -- (module);
-\draw[arr] (module) -- (prog);
-\draw[arr] (prog) -- (pipe);
-\draw[arr] (pipe) -- (sbt);
-\draw[arr] (sbt) -- (bvh);
-\draw[arr] (bvh) -- (launch);
-
-\end{tikzpicture}
-\caption{Formal OptiX initialization sequence. Each step must be completed in order before rays can be traced.}
-\label{fig:optix_init}
-\end{figure}
-
-The OptiX pipeline for SDF computation consists of module creation (compiling CUDA shader code to PTX and creating an OptiX module), program groups (defining ray generation, miss, and hit group programs), pipeline linking (connecting program groups into a traceable pipeline), Shader Binding Table (SBT) configuration (mapping shaders to geometry), BVH construction (building the acceleration structure from triangle mesh data), and launch (executing the ray tracing kernel across all vertices).
-
-\section{Technology Selection}
-
-The choice of OptiX + CUDA over alternative technologies was driven by several factors summarized in Table~\ref{tab:tech_compare}.
-
-\begin{table}[h]
-\centering
-\begin{tabular}{@{}lll@{}}
-\toprule
-\textbf{Criterion} & \textbf{OptiX + CUDA} & \textbf{OpenGL (VCGlib)} \\
-\midrule
-Ray tracing & Hardware RT Cores & Software rasterization \\
-BVH traversal & $O(\log F)$ hardware & None (depth peeling) \\
-GPU requirement & NVIDIA RTX & Any GPU with OpenGL 3.3+ \\
-Post-processing & Full GPU pipeline & None \\
-Parallelism model & Per-vertex & Per-direction \\
-\bottomrule
-\end{tabular}
-\caption{Comparison of OptiX vs.\ OpenGL approaches}
-\label{tab:tech_compare}
-\end{table}
-
-As shown in Table~\ref{tab:tech_compare}, the OptiX + CUDA approach provides hardware-accelerated ray tracing through dedicated RT Cores, enabling $O(\log F)$ BVH traversal directly in hardware. The OpenGL approach relies on software rasterization with depth peeling and requires multiple camera directions to approximate thickness from all sides. OptiX's per-vertex parallelism maps naturally to the SDF computation (each vertex independently shoots rays), while OpenGL's per-direction parallelism requires $N$ separate draw calls with accumulated blending. The post-processing pipeline (log normalization and bilateral smoothing) runs entirely on the GPU in the OptiX approach, whereas the OpenGL approach has no built-in post-processing support.
+OptiX is amazing because it automatically organizes our 3D model into a smart structure called a Bounding Volume Hierarchy (BVH) so that the rays don't have to check every single triangle in the scene. However, setting up OptiX requires a very strict sequence of steps. First, we write our shader code and compile it into a "module." Next, we group those shaders into tasks (like "what to do when a ray hits" vs "what to do when it misses"). We then link everything together into a pipeline, set up our Shader Binding Table (which we'll discuss as our "address book" later!), build the BVH acceleration structure, and finally, launch the rays!
 
 \section{Dataset}
 
-The evaluation dataset consists of 13 triangular mesh models in OBJ format, stored in the \texttt{Model/} directory. These models vary in complexity and size as shown in Table~\ref{tab:dataset}.
+To test how fast our new OptiX pipeline is, we gathered 13 different 3D models. These models range from very simple blocks to highly detailed leaves, as shown in Table~\ref{tab:dataset}.
 
 \begin{table}[h]
 \centering
@@ -101,13 +39,10 @@ The evaluation dataset consists of 13 triangular mesh models in OBJ format, stor
 369.obj & 13,606 & High complexity \\
 158.obj & 14,587 & High complexity \\
 371.obj & 14,599 & High complexity \\
-Leaf.obj & 24,866 & Highest complexity \\
 \bottomrule
 \end{tabular}
 \caption{Dataset models and vertex counts}
 \label{tab:dataset}
 \end{table}
 
-As shown in Table~\ref{tab:dataset}, the dataset spans a wide range of mesh complexities, from simple objects like 360.obj with 2,200 vertices to highly detailed models like Leaf.obj with 24,866 vertices. This diversity ensures that the benchmark results are representative across different scales of geometric detail. The models are triangular meshes in OBJ format, which is the standard input format for the SDF computation pipeline. The vertex counts are used in Chapter 4 to analyze how computation time scales with model complexity.
-
-The models were selected to cover a range of vertex counts (from 2,200 to 24,866) to evaluate how each implementation scales with mesh complexity.
+Why did we pick such different models? We needed to make sure our pipeline doesn't just work fast on simple cubes, but also handles complex, high-resolution models without breaking a sweat! By testing models with 2,200 vertices all the way up to 14,599 vertices, we can prove that our OptiX method scales beautifully as the 3D models get bigger and more complicated.

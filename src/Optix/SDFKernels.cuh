@@ -152,8 +152,8 @@ inline __global__ void GPUExtractCSR(const uint64_t* d_uniqueEdges, int numUniqu
 // KERNEL: LÀM MƯỢT DỊ HƯỚNG TRÊN GPU (ANISOTROPIC SMOOTHING)
 // =========================================================================================
 inline __global__ void AnisotropicSmoothingKernel(
-    const float3* vertices, const float* sdfIn, float* sdfOut,
-    const int* neighborOffsets, const int* neighborLists,
+    const float3* __restrict__ vertices, const float* __restrict__ sdfIn, float* __restrict__ sdfOut,
+    const int* __restrict__ neighborOffsets, const int* __restrict__ neighborLists,
     int numVertices, float sigmaSpatial, float sigmaRange)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;

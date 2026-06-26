@@ -1,4 +1,5 @@
 #include <string>
+#include <sstream>
 #include "../Core/Model.cuh"
 // =========================================================================
 // HÀM ĐỌC FILE SDF (SINH RA TỪ PYMESHLAB) VÀO MÔ HÌNH (ĐÃ SỬA LỖI ĐỌC FILE)
