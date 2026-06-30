@@ -364,18 +364,19 @@ Two CUDA kernels in \texttt{Core/ModelHelper.cu} handle this: \texttt{GPUNormalC
 
 If the SBT is the "address book" that tells the GPU what code to run, how does the ray actually find the triangle it hits in a scene with millions of them? Do we test the ray against every single triangle? Absolutely not! That would take forever. Instead, we use a clever sorting system called a Bounding Volume Hierarchy (BVH).
 
-\begin{figure}[htbp]
-    \centering
-    \includegraphics[width=0.8\textwidth]{"images/Chapter3/BVH constrution/Capture.PNG"}
-    \caption{Visual representation of the Bounding Volume Hierarchy (BVH) structure. The ray only checks which box it hits, and then tests the triangles inside that hitted-box volume. The red triangle is the triangle being tested, and the green triangle is the closest hit. It reduces more than 90\% of the overall test triangles compared to a brute force approach.}
-    \label{fig:bvh_structure}
-\end{figure}
 
 Think of the BVH like a massive game of "Guess Who?". Instead of asking "did I hit triangle 1? Did I hit triangle 2?", the BVH puts the whole 3D model inside a giant invisible box. It asks, "Did the ray hit the giant box?" If no, the ray missed completely! If yes, the BVH splits the box into two smaller boxes and asks again. It keeps splitting into smaller and smaller boxes until it finds the exact triangle the ray hit. This "divide and conquer" trick makes finding hits incredibly fast.
 
 
 
-When we tell OptiX to build this BVH box system, we have to flip a special switch called "disable face culling." Why? Because normally, GPUs only let rays hit the outside of a 3D model. But for our thickness calculation, we are shooting rays *inside* the model! Flipping this switch lets our rays safely hit the back-walls on the inside.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{"images/Chapter3/BVH constrution/Capture.PNG"}
+    \caption{Visual representation of the Bounding Volume Hierarchy (BVH) structure.}
+    \label{fig:bvh_structure}
+\end{figure}
+
+Figure \ref{fig:bvh_structure} illustrates this BVH structure. When we tell OptiX to build this BVH box system, we have to flip a special switch called "disable face culling." Why? Because normally, GPUs only let rays hit the outside of a 3D model. But for our thickness calculation, we are shooting rays *inside* the model! Flipping this switch lets our rays safely hit the back-walls on the inside.
 
 The BVH is built by \texttt{OptixRunner::BuildBVH()} in \texttt{OptixRunner.cuh} using \texttt{optixAccelBuild}. Key flags: \texttt{OPTIX\_BUILD\_FLAG\_PREFER\_FAST\_TRACE} optimizes for trace speed, and \texttt{OPTIX\_GEOMETRY\_FLAG\_DISABLE\_TRIANGLE\_FACE\_CULLING} enables both-sided triangle hits for interior rays. This runs on a dedicated CUDA stream (\texttt{streamBVH}) in parallel with vertex normal computation.
 

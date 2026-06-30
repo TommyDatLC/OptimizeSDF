@@ -14,18 +14,19 @@ Before we look at the stopwatch, let's talk about the math behind the race.
 
 Our OptiX pipeline relies on building a "Guess Who" box (BVH), which takes $O(F \log F)$ time. Once built, finding a hit for a single ray takes only $O(\log F)$ time. If we have $V$ vertices and shoot $R$ rays per vertex (in our case, 64), the ray tracing complexity is $O(V \times R \times \log F)$. Thus, the overall theoretical time complexity of the OptiX pipeline is $O(V \times R \times \log F + F \log F)$.
 
-On the other hand, the PyMeshLab method has to render the entire model over and over again from $N$ different camera angles (in our case, 64). For each angle, it must perform $P$ layers of depth peeling (we use 10). Crucially, this $P$ parameter cannot be found automatically; the user must manually guess and tune the number of peeling iterations to ensure the model's inner layers are accurately captured. This means its theoretical time complexity is $O(N \times (F \times P + V))$, which simplifies to roughly $O(640 \times F)$ just for the rendering portion!
+On the other hand, the PyMeshLab method has to render the entire model over and over again from $N$ different camera angles (in our case, 64). For each angle, it must perform $P$ layers of depth peeling (we use 10). Crucially, this $P$ parameter cannot be found automatically; the user must manually guess and tune the number of peeling iterations to ensure the model's inner layers are accurately captured.
 
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=\textwidth]{images/Chapter 4/Difference.PNG}
-\caption{The difference between correct and incorrect peeling iterations.\newline Figure 4.1 illustrates how an insufficient number of peeling iterations fails to capture the inner layers of complex models, leading to significant SDF calculation errors in occluded regions.}
-\label{fig:peeling_difference}
-\end{figure}
+When testing the SDF computation on complex interior structures like a coil, the number of depth peeling iterations significantly impacts the accuracy. A comparison between 10 iterations (insufficient) and 129 iterations (ground truth) reveals massive discrepancies in the occluded regions:
 
-So why does OptiX absolutely crush PyMeshLab? First, OptiX uses dedicated RT Core hardware to test ray hits instantly, whereas PyMeshLab uses software draw calls. Second, OptiX keeps all the data on the super-fast GPU memory, while PyMeshLab forces the CPU and GPU to constantly pass data back and forth, and overall complexity is reduced. Moreover, we don't need to waste time tuning the P parameter.
+\begin{itemize}
+    \item Total Difference: 9707.9797
+    \item Average Difference per vertex: 0.5394
+    \item Max Difference at a point: 4.2124 (very large compared to the maximum SDF scale of $\sim$11.6)
+\end{itemize}
 
-Take a look at Table~\ref{tab:benchmark}. The results speak for themselves! OptiX is faster on every single model, with speedups ranging from a respectable 3.1x all the way to a mind-blowing 171.0x faster!
+This means its theoretical time complexity is $O(N \times (F \times P + V))$. So why does OptiX absolutely crush PyMeshLab? First, OptiX uses dedicated RT Core hardware to test ray hits instantly, whereas PyMeshLab uses software draw calls. Second, OptiX keeps all the data on the super-fast GPU memory, while PyMeshLab forces the CPU and GPU to constantly pass data back and forth, and overall complexity is reduced. Moreover, we don't need to waste time tuning the P parameter.
+
+Take a look at Table~\ref{tab:benchmark}. The results speak for themselves! OptiX is faster on every single model, with speedups ranging from a respectable 3.1x all the way to a mind-blowing 356.2x faster!
 
 \begin{table}[ht]
 \centering
@@ -201,10 +202,3 @@ Model 76 is a medium-sized model. OptiX keeps the color transitions silky smooth
 Model 9 is tiny! Both heat maps look practically identical. But remember, OptiX finished the job 51.6 times faster. This proves we don't sacrifice any quality for our incredible speed!
 \end{minipage}
 
-\clearpage
-
-\section{Overall Conclusion}
-
-So, what did we learn? We achieved a massive 171x speedup, but did we sacrifice quality? Absolutely not! In fact, the OptiX thickness maps look significantly better, smoother, and more realistic than the PyMeshLab results! 
-
-Why? Because PyMeshLab just spits out raw, noisy numbers. Our OptiX pipeline uses the clever "dimmer-switch" smoothing filter to clean up the noise while perfectly preserving sharp edges. This project proves that using dedicated ray tracing hardware (OptiX) isn't just faster—it's fundamentally better!

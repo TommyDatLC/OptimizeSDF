@@ -1,0 +1,7 @@
+\chapter{Conclusion and Future work}
+
+So, what did we learn? We achieved a massive 356.2x speedup, but did we sacrifice quality? Absolutely not! In fact, the OptiX thickness maps look significantly better, smoother, and more realistic than the PyMeshLab results! 
+
+Why? Because PyMeshLab just spits out raw, noisy numbers. Our OptiX pipeline uses the clever "dimmer-switch" smoothing filter to clean up the noise while perfectly preserving sharp edges. This project proves that using dedicated ray tracing hardware (OptiX) isn't just faster—it's fundamentally better!
+
+Moving forward, there are several exciting avenues for future work. First, the current pipeline could be extended to support dynamic, animated meshes by updating the BVH in real-time. Second, we plan to explore advanced filtering techniques, such as AI-driven denoising, to further enhance the quality of the SDF heatmaps without increasing the ray count. Finally, integrating this OptiX-based thickness calculation directly into popular 3D modeling software as a plug-in would make this powerful tool accessible to a much broader audience of artists and engineers.

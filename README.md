@@ -452,6 +452,18 @@ Each camera direction contributes a small piece to the global sum. Additive blen
 
 ---
 
+## Depth Peeling Impact on SDF Accuracy
+
+When testing the SDF computation on complex interior structures (e.g., `HighPeeling_Coil.obj`), the number of depth peeling iterations significantly impacts the accuracy of the computed inner layers. A comparison between **10 iterations** (insufficient) and **129 iterations** (ground truth) reveals massive discrepancies in the occluded regions:
+
+*   **Total SDF Difference:** 9707.9797
+*   **Average SDF Difference per Vertex:** 0.5394
+*   **Maximum SDF Difference:** 4.2124
+
+These numerical differences show that without enough peeling iterations, the ray tracing fails to penetrate the outer shells, leading to severe SDF overestimation (errors up to 4.21 on a 11.6 scale) on the interior vertices.
+
+---
+
 ## Visual Quality Comparison
 
 Each row shows the SDF heat map from both implementations and their absolute difference. Hot colors (red/yellow) indicate larger SDF values (thicker regions), while cool colors (blue) indicate thinner regions.

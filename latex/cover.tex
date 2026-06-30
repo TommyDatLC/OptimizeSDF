@@ -19,7 +19,7 @@
 \setlength{\parskip}{6pt}
 \usepackage{amsmath}
 \usepackage{amssymb}
-\usepackage{hyperref}
+\usepackage[hidelinks]{hyperref}
 \usepackage{amsmath}
 \usepackage{booktabs}
 \usepackage{longtable}
@@ -44,6 +44,43 @@
 % COVER PAGE
 \input{cover_page}
 
+\pagenumbering{roman}
+
+\tableofcontents
+\clearpage
+
+\chapter*{Acknowledgements}
+\addcontentsline{toc}{chapter}{Acknowledgements}
+I would like to express my gratitude to all those who gave me possibility to complete this thesis in specific as well as academic supporting in general that I received during the time of my studying at the University of Science and Technology of Hanoi.
+
+Foremost, I would like to send my honest thanks to my supervisor for their continuous guidance, invaluable advice, and encouragement throughout the course of this project. Their expertise and willingness to share knowledge have been instrumental in my academic growth and the successful completion of this thesis.
+
+\chapter*{List of Abbreviations}
+\addcontentsline{toc}{chapter}{List of Abbreviations}
+\vspace{1cm}
+\begin{tabular}{ll}
+
+    \textbf{SDF} & Shape Diameter Function \\[1em]
+    \textbf{BVH} & Bounding Volume Hierarchy \\[1em]
+    \textbf{CUDA} & Compute Unified Device Architecture \\[1em]
+    \textbf{CSR} & Compressed Sparse Row \\[1em]
+    \textbf{SBT} & Shader Binding Table \\[1em]
+    \textbf{GPU} & Graphics Processing Unit \\
+\end{tabular}
+
+\listoftables
+\addcontentsline{toc}{chapter}{List of Tables}
+
+\listoffigures
+\addcontentsline{toc}{chapter}{List of Figures}
+
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
+% TODO: Add abstract
+
+
+\pagenumbering{arabic}
+
 % CHAPTER 1: INTRODUCTION
 \input{chapter1}
 
@@ -56,6 +93,8 @@
 % CHAPTER 4: EXPERIMENT RESULTS
 \input{chapter4}
 
+% CHAPTER 5: CONCLUSION AND FUTURE WORK
+\input{chapter5}
 % =========================================================================
 % REFERENCES
 % =========================================================================
