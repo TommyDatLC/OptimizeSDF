@@ -18,9 +18,10 @@ namespace OptixRunner {
     inline OptixDeviceContext InitContext() {
         CUDA_CHECK( cudaFree(0) );
         OptixDeviceContext context = nullptr;
-        OptixDeviceContextOptions options = {}; 
-        options.logCallbackFunction = &context_log_cb; 
+        OptixDeviceContextOptions options = {}; //set to default problem
+        options.logCallbackFunction = &context_log_cb; // set logger for func for the call back
         options.logCallbackLevel = 0;
+        // initalize context
         OPTIX_CHECK( optixDeviceContextCreate( 0, &options, &context ) );
         return context;
     }
@@ -67,6 +68,8 @@ namespace OptixRunner {
 
         OptixProgramGroupOptions pgOptions = {};
 
+        // kind : choose the raygen kind
+        // module : link with raygen module
         OptixProgramGroupDesc raygenDesc = {}; raygenDesc.kind = OPTIX_PROGRAM_GROUP_KIND_RAYGEN; raygenDesc.raygen.module = module; raygenDesc.raygen.entryFunctionName = "__raygen__sdf_cone";
         OPTIX_CHECK( optixProgramGroupCreate( context, &raygenDesc, 1, &pgOptions, nullptr, nullptr, &raygenProgGroup ) );
 
@@ -84,25 +87,63 @@ namespace OptixRunner {
     }
 
     inline OptixShaderBindingTable BuildSBT(OptixProgramGroup raygenProgGroup, OptixProgramGroup missProgGroup, OptixProgramGroup hitProgGroup, CUdeviceptr& d_rgSbt, CUdeviceptr& d_msSbt, CUdeviceptr& d_hgSbt) {
+        // allocate binding table and copy to GPU
         RaygenRecord rgSbt; OPTIX_CHECK( optixSbtRecordPackHeader( raygenProgGroup, &rgSbt ) ); CUDA_CHECK( cudaMalloc((void**)&d_rgSbt, sizeof(RaygenRecord)) ); CUDA_CHECK( cudaMemcpy((void*)d_rgSbt, &rgSbt, sizeof(RaygenRecord), cudaMemcpyHostToDevice) );
         MissRecord msSbt; OPTIX_CHECK( optixSbtRecordPackHeader( missProgGroup, &msSbt ) ); CUDA_CHECK( cudaMalloc((void**)&d_msSbt, sizeof(MissRecord)) ); CUDA_CHECK( cudaMemcpy((void*)d_msSbt, &msSbt, sizeof(MissRecord), cudaMemcpyHostToDevice) );
         HitgroupRecord hgSbt; OPTIX_CHECK( optixSbtRecordPackHeader( hitProgGroup, &hgSbt ) ); CUDA_CHECK( cudaMalloc((void**)&d_hgSbt, sizeof(HitgroupRecord)) ); CUDA_CHECK( cudaMemcpy((void*)d_hgSbt, &hgSbt, sizeof(HitgroupRecord), cudaMemcpyHostToDevice) );
-
         OptixShaderBindingTable sbt = {};
+        // and assign it the pointer to sbt structure
         sbt.raygenRecord = d_rgSbt; 
         sbt.missRecordBase = d_msSbt; sbt.missRecordStrideInBytes = sizeof( MissRecord ); sbt.missRecordCount = 1;
         sbt.hitgroupRecordBase = d_hgSbt; sbt.hitgroupRecordStrideInBytes = sizeof( HitgroupRecord ); sbt.hitgroupRecordCount = 1;
         return sbt;
     }
 
-    inline float host_radicalInverse_VdC(unsigned int bits) {
-        bits = (bits << 16u) | (bits >> 16u);
-        bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
-        bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
-        bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
-        bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
-        return float(bits) * 2.3283064365386963e-10f;
-    }
+// "host_" indicates this runs on the CPU.
+// "radicalInverse_VdC" stands for the Van der Corput radical inverse.
+inline float host_radicalInverse_VdC(unsigned int bits) {
+
+    // =====================================================================
+    // STEP 1: BIT REVERSAL
+    // The core of the base-2 Van der Corput sequence is taking an integer
+    // index and reversing its binary representation. Instead of using a loop,
+    // this uses a highly optimized "bit-twiddling" technique to reverse all
+    // 32 bits in parallel.
+    // =====================================================================
+
+    // 1. Swap the top 16 bits and the bottom 16 bits.
+    // Example: [A B] becomes [B A]
+    bits = (bits << 16u) | (bits >> 16u);
+
+    // 2. Swap adjacent bits.
+    // 0x55555555 is binary 01010101... (grabs all odd-indexed bits)
+    // 0xAAAAAAAA is binary 10101010... (grabs all even-indexed bits)
+    bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+
+    // 3. Swap adjacent pairs of 2 bits.
+    // 0x33333333 is binary 00110011...
+    // 0xCCCCCCCC is binary 11001100...
+    bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+
+    // 4. Swap adjacent groups of 4 bits (nibbles).
+    // 0x0F0F0F0F is binary 00001111...
+    bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+
+    // 5. Swap adjacent groups of 8 bits (bytes).
+    // 0x00FF00FF is binary 0000000011111111...
+    bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+
+    // =====================================================================
+    // STEP 2: DECIMAL CONVERSION
+    // =====================================================================
+
+    // At this point, 'bits' is fully reversed.
+    // We now treat this reversed binary sequence as a fraction.
+    // The magic number (2.3283064365386963e-10f) is exactly 1.0 / (2^32).
+    // Multiplying the reversed 32-bit integer by this value normalizes it,
+    // returning a floating-point number strictly between 0.0 and 0.9999999...
+    return float(bits) * 2.3283064365386963e-10f;
+}
 
     inline float* LaunchOptixAndCUB(
         int numVertices, int raysPerPoint, float coneAngleRadian,
@@ -126,6 +167,7 @@ namespace OptixRunner {
         params.raysPerPoint = raysPerPoint;
         params.coneAngleRad = coneAngleRadian;
 
+        //pre compute hamsely
         int limit = (raysPerPoint > 128) ? 128 : raysPerPoint;
         for (int i = 0; i < limit; i++) {
             params.hammersleyUVs[i].x = float(i) / float(limit);
@@ -162,7 +204,7 @@ namespace OptixRunner {
         std::cout << "[DEBUG] [SDF Pipeline] Thời gian tính toán SDF thô (Bao gồm Thread-local Sort): " << std::chrono::duration<double>(t_raw_sdf_end - t_raw_sdf_start).count() << " giây\n";
 
         cudaFree((void*)d_params);
-        cudaFree((void*)d_outputDistances); cudaFree((void*)d_outputWeights); cudaFree((void*)d_validCounts);
+        cudaFree(d_outputDistances); cudaFree(d_outputWeights); cudaFree(d_validCounts);
 
         return d_rawSDF;
     }

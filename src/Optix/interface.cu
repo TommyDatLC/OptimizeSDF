@@ -136,14 +136,23 @@ inline float CaculatingSDFUsingOptix(Model& model, const OptixGlobalState& state
     // =========================================================================
     std::cout << "Đóng gói mạng lưới CSR Graph và Chuẩn hóa SDF song song...\n";
     
+    // 2.1. KHỞI TẠO CUDA STREAM ĐỂ CHẠY SONG SONG
+    // Tạo 2 stream độc lập để thực hiện song song 2 luồng công việc nặng:
+    // - streamCSR: Xử lý đóng gói đồ thị lân cận (CSR Graph) của các đỉnh phục vụ việc làm mịn (smoothing).
+    // - streamNorm: Tính toán bounding box của mesh và chuẩn hóa giá trị SDF thô.
     cudaStream_t streamCSR, streamNorm;
     CUDA_CHECK(cudaStreamCreate(&streamCSR));
     CUDA_CHECK(cudaStreamCreate(&streamNorm));
 
     auto t_alloc_start = std::chrono::high_resolution_clock::now();
+    
+    // Mỗi tam giác (face) có 3 cạnh không hướng, tương ứng với 6 cạnh có hướng (directed edges)
+    // để đảm bảo lưu trữ quan hệ lân cận 2 chiều phục vụ duyệt đỉnh kề.
     int numEdges = numFaces * 6;
     uint64_t *d_edges, *d_sortedEdges, *d_uniqueEdges;
     int *d_numUniqueEdges, *d_nbrOffsets, *d_nbrLists;
+    
+    // Cấp phát bộ nhớ GPU cho các mảng xử lý đồ thị (CSR)
     CUDA_CHECK(cudaMalloc(&d_edges, numEdges * sizeof(uint64_t)));
     CUDA_CHECK(cudaMalloc(&d_sortedEdges, numEdges * sizeof(uint64_t)));
     CUDA_CHECK(cudaMalloc(&d_uniqueEdges, numEdges * sizeof(uint64_t)));
@@ -151,49 +160,75 @@ inline float CaculatingSDFUsingOptix(Model& model, const OptixGlobalState& state
     CUDA_CHECK(cudaMalloc((void**)&d_nbrOffsets, (numVertices + 1) * sizeof(int)));
     CUDA_CHECK(cudaMalloc((void**)&d_nbrLists, numEdges * sizeof(int)));
 
+    // Cấp phát bộ nhớ và khởi tạo giá trị ban đầu cho Bounding Box [minX, maxX, minY, maxY, minZ, maxZ]
     float* d_minMaxBox;
     CUDA_CHECK(cudaMalloc((void**)&d_minMaxBox, 6 * sizeof(float)));
-    float initBox[6] = {1e15f, -1e15f, 1e15f, -1e15f, 1e15f, -1e15f};
+    float initBox[6] = {1e15f, -1e15f, 1e15f, -1e15f, 1e15f, -1e15f}; // Khởi tạo min cực lớn, max cực nhỏ để thực hiện Reduction
+    // Copy không chặn (Asynchronous) giá trị khởi tạo qua streamNorm
     CUDA_CHECK(cudaMemcpyAsync(d_minMaxBox, initBox, 6 * sizeof(float), cudaMemcpyHostToDevice, streamNorm));
 
+    // Bộ đệm SDF cho phép thực hiện làm mịn qua lại (ping-pong buffer) giữa d_sdfBuf1 và d_sdfBuf2
     float* d_sdfBuf1 = d_rawSDF; 
     float* d_sdfBuf2;
     CUDA_CHECK(cudaMalloc((void**)&d_sdfBuf2, numVertices * sizeof(float)));
 
+    // Cấp phát bộ nhớ và khởi tạo giá trị ban đầu [minSDF, maxSDF]
     float* d_minMaxSDF;
     CUDA_CHECK(cudaMalloc((void**)&d_minMaxSDF, 2 * sizeof(float)));
     float initSDF[2] = {1e15f, -1e15f};
+    // Copy không chặn giá trị khởi tạo qua streamNorm
     CUDA_CHECK(cudaMemcpyAsync(d_minMaxSDF, initSDF, 2 * sizeof(float), cudaMemcpyHostToDevice, streamNorm));
 
     auto t_alloc_end = std::chrono::high_resolution_clock::now();
     std::cout << "[DEBUG] [SDF Pipeline] Thời gian Cấp phát bộ nhớ chung (cudaMalloc): " << std::chrono::duration<double>(t_alloc_end - t_alloc_start).count() << " giây\n";
 
+    // =========================================================================
     // --- THỰC THI CSR (streamCSR) ---
+    // Nhánh này xử lý việc trích xuất và tối ưu hóa danh sách cạnh kề của đồ thị.
+    // =========================================================================
     int blockSize = 256;
     int gridSizeFaces = (numFaces + blockSize - 1) / blockSize;
+    
+    // Bước 1: Sinh ra các cạnh có hướng từ danh sách mặt tam giác (Mỗi tam giác sinh ra 6 cạnh định hướng)
     GPUGenerateEdges<<<gridSizeFaces, blockSize, 0, streamCSR>>>((const uint3*)indices.getDevicePtr(), numFaces, d_edges);
 
+    // Bước 2: Sắp xếp các cạnh (Sort Keys) bằng thư viện CUB Radix Sort của NVIDIA để nhóm các cạnh trùng nhau lại gần nhau
     void *d_temp_storage_sort = nullptr; size_t temp_storage_bytes_sort = 0;
+    // Chạy thử lần 1 để lấy kích thước bộ nhớ đệm (temp_storage_bytes_sort) cần thiết
     cub::DeviceRadixSort::SortKeys(d_temp_storage_sort, temp_storage_bytes_sort, d_edges, d_sortedEdges, numEdges, 0, sizeof(uint64_t)*8, streamCSR);
     CUDA_CHECK(cudaMalloc(&d_temp_storage_sort, temp_storage_bytes_sort));
+    // Chạy thật lần 2 để thực hiện sắp xếp trên streamCSR
     cub::DeviceRadixSort::SortKeys(d_temp_storage_sort, temp_storage_bytes_sort, d_edges, d_sortedEdges, numEdges, 0, sizeof(uint64_t)*8, streamCSR);
 
+    // Bước 3: Lọc bỏ các cạnh trùng lặp (Deduplication / Unique) bằng CUB DeviceSelect
     void *d_temp_storage_unique = nullptr; size_t temp_storage_bytes_unique = 0;
+    // Chạy thử lần 1 để lấy kích thước bộ nhớ đệm (temp_storage_bytes_unique) cần thiết
     cub::DeviceSelect::Unique(d_temp_storage_unique, temp_storage_bytes_unique, d_sortedEdges, d_uniqueEdges, d_numUniqueEdges, numEdges, streamCSR);
     CUDA_CHECK(cudaMalloc(&d_temp_storage_unique, temp_storage_bytes_unique));
+    // Chạy thật lần 2 để loại bỏ trùng lặp trên streamCSR
     cub::DeviceSelect::Unique(d_temp_storage_unique, temp_storage_bytes_unique, d_sortedEdges, d_uniqueEdges, d_numUniqueEdges, numEdges, streamCSR);
 
+    // Copy bất đồng bộ số lượng cạnh duy nhất (numUniqueEdges) từ GPU về CPU để chuẩn bị cho bước CSR tiếp theo
     int numUniqueEdges = 0;
     CUDA_CHECK(cudaMemcpyAsync(&numUniqueEdges, d_numUniqueEdges, sizeof(int), cudaMemcpyDeviceToHost, streamCSR));
 
+    // =========================================================================
     // --- THỰC THI NORMALIZATION (streamNorm) ---
+    // Nhánh này chạy song song để tính toán hình học Mesh và chuẩn hóa dữ liệu SDF.
+    // =========================================================================
     int gridSizeVerts = (numVertices + blockSize - 1) / blockSize;
+    
+    // Bước 1: Tính toán Bounding Box (Hộp giới hạn) bằng GPU Reduction
     GPUComputeBoundingBox<<<gridSizeVerts, blockSize, 0, streamNorm>>>((const float3*)vertices.getDevicePtr(), numVertices, d_minMaxBox);
     
+    // Copy bất đồng bộ Bounding Box từ GPU về CPU để sử dụng tính toán bán kính bboxDiagonal sau này
     float h_minMaxBox[6];
     CUDA_CHECK(cudaMemcpyAsync(h_minMaxBox, d_minMaxBox, 6 * sizeof(float), cudaMemcpyDeviceToHost, streamNorm));
 
+    // Bước 2: Tìm giá trị SDF nhỏ nhất và lớn nhất (Reduction)
     GPUComputeSDFMinMax<<<gridSizeVerts, blockSize, 0, streamNorm>>>(d_sdfBuf1, numVertices, d_minMaxSDF);
+    
+    // Bước 3: Chuẩn hóa toàn bộ mảng SDF thô (đưa các giá trị về miền chuẩn hóa/đồng bộ)
     GPUApplySDFNormalization<<<gridSizeVerts, blockSize, 0, streamNorm>>>(d_sdfBuf1, numVertices, d_minMaxSDF);
 
     // --- ĐỒNG BỘ HAI STREAM ---

@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SDF Depth Peeling Visualization</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="index.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- 3D Viewport Area (Full Screen) -->
+        <div class="canvas-container">
+            <div id="vizContainer"></div>
+            <div class="canvas-overlay" id="statusOverlay">Step 1: Setup Camera & Torus</div>
+        </div>
+
+        <!-- Header -->
+        <header class="glass-panel">
+            <h1>SDF Depth Peeling <span class="accent">3D GPU Algorithm</span></h1>
+            <p>Interactive full-screen visualization of PyMeshLab's Depth Peeling on a Torus.</p>
+        </header>
+
+        <!-- Controls and Explanations -->
+        <aside class="glass-panel">
+            <div class="controls-panel">
+                <div class="button-group">
+                    <button class="btn" id="btnPrev" disabled>Previous Step</button>
+                    <button class="btn primary" id="btnNext">Next Step</button>
+                </div>
+
+                <div class="settings">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="toggleOutliers">
+                        <span class="slider"></span>
+                        <span class="label-text">Enable Outlier Removal</span>
+                    </label>
+                    <div class="slider-container" style="margin-top: 15px; width: 100%;">
+                        <label for="numRaysSlider" class="label-text">Number of Rays: <span id="numRaysDisplay" class="accent">1</span></label>
+                        <input type="range" id="numRaysSlider" min="1" max="128" value="1" style="width: 100%; margin-top: 8px;">
+                    </div>
+                    <div class="slider-container" style="margin-top: 15px; width: 100%;">
+                        <label for="pointSizeSlider" class="label-text">Vertex Point Size: <span id="pointSizeDisplay" class="accent">0.05</span></label>
+                        <input type="range" id="pointSizeSlider" min="0.05" max="1.0" step="0.05" value="0.05" style="width: 100%; margin-top: 8px;">
+                    </div>
+                </div>
+
+                <div class="explanation-box" id="explanationBox">
+                    <h3>Current Action</h3>
+                    <p id="explanationText">Initialize</p>
+                </div>
+
+                <div class="stats">
+                    <div class="stat-item">
+                        <span>depthTextureFront (Hit 1):</span>
+                        <span id="valFront" style="font-family: monospace;">-</span>
+                    </div>
+                    <div class="stat-item">
+                        <span>depthTextureBack (Hit 2):</span>
+                        <span id="valBack" style="font-family: monospace;">-</span>
+                    </div>
+                    <div class="stat-item highlight">
+                        <span>SDF Thickness:</span>
+                        <span id="valSDF" style="font-family: monospace;">-</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+        
+        <!-- Depth Monitor PiP -->
+        <div id="depthMonitor" class="glass-panel">
+            <div class="monitor-title">GPU Depth Texture</div>
+            <div id="depthCanvasContainer"></div>
+            <div class="monitor-status" id="monitorStatus">Offline</div>
+        </div>
+    </div>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
