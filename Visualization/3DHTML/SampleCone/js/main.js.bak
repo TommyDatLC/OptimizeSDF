@@ -1,0 +1,589 @@
+import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import TWEEN from '@tweenjs/tween.js';
+
+    // ==========================================
+    // 1. SETUP SCENE, CAMERA, RENDERER
+    // ==========================================
+    const scene = new THREE.Scene();
+    const gridHelper = new THREE.GridHelper(20, 20, 0x444444, 0x222222);
+    gridHelper.visible = false;
+    scene.add(gridHelper);
+
+    // Grid toggle
+    let gridVisible = false;
+    const gridToggle = document.getElementById('grid-toggle');
+    gridToggle.addEventListener('click', () => {
+        gridVisible = !gridVisible;
+        gridHelper.visible = gridVisible;
+        gridToggle.textContent = gridVisible ? '🔲 Grid: ON' : '🔲 Grid: OFF';
+    });
+
+    // Background toggle
+    let isDark = true;
+    const bgToggle = document.getElementById('bg-toggle');
+    bgToggle.addEventListener('click', () => {
+        isDark = !isDark;
+        if (isDark) {
+            document.body.style.backgroundColor = '#080808';
+            scene.background = null;
+            gridHelper.material[0].color.setHex(0x444444);
+            gridHelper.material[1].color.setHex(0x222222);
+            bgToggle.textContent = '🌙 Dark';
+        } else {
+            document.body.style.backgroundColor = '#ffffff';
+            scene.background = new THREE.Color(0xffffff);
+            gridHelper.material[0].color.setHex(0xcccccc);
+            gridHelper.material[1].color.setHex(0xdddddd);
+            bgToggle.textContent = '☀️ Light';
+        }
+    });
+
+    const coneInitialPos = new THREE.Vector3(0, 0, 0);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+    const startCamPos = new THREE.Vector3(0, 4, 8);
+    camera.position.copy(startCamPos);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    document.body.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    // Bật tính năng tự động xoay camera
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 1.0;
+    controls.target.set(0, 1.5, 0);
+    controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: null };
+
+    window.isCameraPanning = false;
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    dirLight.position.set(5, 10, 7);
+    scene.add(dirLight);
+
+    // ==========================================
+    // 2. MÔ HÌNH HÌNH THOI (CÁCH XA TRUNG TÂM)
+    // ==========================================
+    const modelGroup = new THREE.Group();
+    scene.add(modelGroup);
+
+    modelGroup.position.set(7, 2, -4);
+    modelGroup.rotation.set(Math.PI / 6, Math.PI / 4, 0);
+
+    const pTop = new THREE.Vector3(0, 3, 0);
+    const pBot = new THREE.Vector3(0, -3, 0);
+    const pFront = new THREE.Vector3(0, 0, 3);
+    const pRight = new THREE.Vector3(3, 0, 0);
+    const pBack = new THREE.Vector3(0, 0, -3);
+    const pLeft = new THREE.Vector3(-3, 0, 0);
+
+    const faces = [];
+    function createTri(p1, p2, p3) {
+        const geo = new THREE.BufferGeometry().setFromPoints([p1, p2, p3]);
+        geo.computeVertexNormals();
+        const mat = new THREE.MeshPhongMaterial({ color: 0x1155AA, side: THREE.DoubleSide, transparent: true, opacity: 0.8 });
+        const mesh = new THREE.Mesh(geo, mat);
+        const edgeMat = new THREE.LineBasicMaterial({ color: 0x88CCFF, transparent: true, opacity: 0.5 });
+        mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgeMat));
+        modelGroup.add(mesh);
+        faces.push(mesh);
+    }
+
+    createTri(pTop, pFront, pRight); createTri(pTop, pRight, pBack);
+    createTri(pTop, pBack, pLeft);   createTri(pTop, pLeft, pFront);
+    createTri(pBot, pRight, pFront); createTri(pBot, pBack, pRight);
+    createTri(pBot, pLeft, pBack);   createTri(pBot, pFront, pLeft);
+
+    const targetVertexLocal = pRight.clone();
+    const targetNormalLocal = new THREE.Vector3(1, 0, 0);
+
+    modelGroup.updateMatrixWorld(true);
+    const targetVertex = targetVertexLocal.applyMatrix4(modelGroup.matrixWorld);
+    const targetNormal = targetNormalLocal.transformDirection(modelGroup.matrixWorld).normalize();
+    const invNormal = targetNormal.clone().multiplyScalar(-1);
+
+    const vertexDot = new THREE.Mesh(new THREE.SphereGeometry(0.12, 16, 16), new THREE.MeshBasicMaterial({color: 0xFFFFFF}));
+    vertexDot.position.copy(targetVertex);
+    vertexDot.visible = false;
+    scene.add(vertexDot);
+
+    // ==========================================
+    // 3. TẠO HÌNH NÓN Ở TRUNG TÂM & ĐƯỜNG TOÁN HỌC (ĐỊNH HƯỚNG THEO TRỤC Y)
+    // ==========================================
+    const coneHeight = 3.0;
+    const coneHalfAngle = 35 * (Math.PI / 180); // Nửa góc nón
+    const coneRadius = coneHeight * Math.tan(coneHalfAngle);
+
+    const coneGroup = new THREE.Group();
+    coneGroup.position.copy(coneInitialPos);
+    scene.add(coneGroup);
+
+    const coneGeo = new THREE.CylinderGeometry(coneRadius, 0.01, coneHeight, 32);
+    coneGeo.translate(0, coneHeight / 2, 0);
+
+    const coneMat = new THREE.MeshPhongMaterial({ color: 0x2288FF, transparent: true, opacity: 0.0, side: THREE.DoubleSide, depthWrite: false });
+    const coneMesh = new THREE.Mesh(coneGeo, coneMat);
+    const coneEdges = new THREE.LineSegments(new THREE.EdgesGeometry(coneGeo), new THREE.LineBasicMaterial({ color: 0x88CCFF, transparent: true, opacity: 0.0 }));
+    coneGroup.add(coneMesh);
+    coneGroup.add(coneEdges);
+
+    const mathGroup = new THREE.Group();
+    const lineMatYellow = new THREE.LineBasicMaterial({ color: 0xFFFF00, linewidth: 3, transparent: true, opacity: 0 });
+    const lineMatRed = new THREE.LineBasicMaterial({ color: 0xFF0000, linewidth: 3, transparent: true, opacity: 0 });
+
+    // Trục dọc theo phương Y
+    const hLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0, coneHeight, 0)]), lineMatYellow);
+    // Bán kính theo phương X
+    const rLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, coneHeight, 0), new THREE.Vector3(coneRadius, coneHeight, 0)]), lineMatRed);
+    // Cạnh huyền 1 & 2
+    const hypLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(coneRadius, coneHeight, 0)]), lineMatYellow);
+    const hypLine2 = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(-coneRadius, coneHeight, 0)]), lineMatYellow);
+
+    mathGroup.add(hLine, rLine, hypLine, hypLine2);
+
+    // Vẽ cung tròn hiển thị góc Theta toàn phần (từ -halfAngle đến +halfAngle)
+    const arcRadius = 1.2;
+    const arcPts = [];
+    for (let i = -20; i <= 20; i++) {
+        const a = (i / 20) * coneHalfAngle;
+        arcPts.push(new THREE.Vector3(arcRadius * Math.sin(a), arcRadius * Math.cos(a), 0));
+    }
+    const arcLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(arcPts), new THREE.LineBasicMaterial({ color: 0xFFFFFF, linewidth: 2, transparent: true, opacity: 0 }));
+    mathGroup.add(arcLine);
+
+    coneGroup.add(mathGroup);
+
+    hLine.visible = false; rLine.visible = false; hypLine.visible = false; hypLine2.visible = false; arcLine.visible = false;
+
+    const hMidPos = new THREE.Vector3(0, coneHeight / 2, 0);
+    // Đặt nhãn theta thấp xuống một chút để không trùng với số 1 (Y=1.5)
+    const thetaPos = new THREE.Vector3(0, arcRadius - 0.3, 0);
+
+    const thetaLabel = document.getElementById('theta-label');
+    katex.render("\\theta", thetaLabel, { throwOnError: false });
+
+    // ==========================================
+    // 4. RANDOM POINTS (UNIT EDGE -> EDGE -> INNER)
+    // ==========================================
+    const pointsGroup = new THREE.Group();
+    coneGroup.add(pointsGroup);
+    const numPoints = 12;
+
+    const ptData = [];
+    const ptMeshes = [];
+    const radialLines = [];
+
+    const circlePts = [];
+    for(let i=0; i<=64; i++) {
+        const a = i/64*Math.PI*2;
+        circlePts.push(new THREE.Vector3(Math.cos(a), 0, Math.sin(a)));
+    }
+    const circleGeo = new THREE.BufferGeometry().setFromPoints(circlePts);
+    const circleLine = new THREE.Line(circleGeo, new THREE.LineBasicMaterial({color: 0xAAAAAA, transparent: true, opacity: 0}));
+    circleLine.position.set(0, coneHeight, 0);
+    circleLine.visible = false;
+    coneGroup.add(circleLine);
+
+    const centerBase = new THREE.Vector3(0, coneHeight, 0);
+
+    for(let i=0; i<numPoints; i++){
+        const theta_rot = Math.random() * Math.PI * 2;
+        const u1 = Math.random();
+
+        const pUnitEdge = new THREE.Vector3(Math.cos(theta_rot), coneHeight, Math.sin(theta_rot));
+        const pEdge = new THREE.Vector3(coneRadius * Math.cos(theta_rot), coneHeight, coneRadius * Math.sin(theta_rot));
+
+        const r_inner = coneRadius * Math.sqrt(u1);
+        const pInner = new THREE.Vector3(r_inner * Math.cos(theta_rot), coneHeight, r_inner * Math.sin(theta_rot));
+
+        ptData.push({ pUnitEdge, pEdge, pInner });
+
+        const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8), new THREE.MeshBasicMaterial({ color: 0xFFFFFF }));
+        mesh.position.copy(pUnitEdge);
+        mesh.visible = false;
+        pointsGroup.add(mesh);
+        ptMeshes.push(mesh);
+
+        // Đường bán kính liên kết động với các hạt (Màu Đỏ)
+        const rGeo = new THREE.BufferGeometry().setFromPoints([centerBase, pUnitEdge]);
+        const rMat = new THREE.LineBasicMaterial({ color: 0xFF0000, transparent: true, opacity: 0, linewidth: 2 });
+        const rLineObj = new THREE.Line(rGeo, rMat);
+        rLineObj.visible = false;
+        coneGroup.add(rLineObj);
+        radialLines.push(rLineObj);
+    }
+
+    // ==========================================
+    // 5. CROSS PRODUCT VÀ MA TRẬN TRỰC GIAO
+    // ==========================================
+    const worldUp = new THREE.Vector3(0, 1, 0);
+    if (Math.abs(invNormal.dot(worldUp)) > 0.999) worldUp.set(1, 0, 0);
+
+    const localY = invNormal.clone();
+    const localX = new THREE.Vector3().crossVectors(worldUp, localY).normalize();
+    const localZ = new THREE.Vector3().crossVectors(localX, localY).normalize();
+
+    const rotMatrix = new THREE.Matrix4().makeBasis(localX, localY, localZ);
+    const finalQuat = new THREE.Quaternion().setFromRotationMatrix(rotMatrix);
+
+    function createArrow(origin, dir, length, colorHex) {
+        const arrow = new THREE.ArrowHelper(dir.clone().normalize(), origin, length, colorHex, length*0.2, length*0.15);
+        arrow.visible = false;
+        scene.add(arrow);
+        return arrow;
+    }
+
+    const lenVec = 2.0;
+    const arrNorm = createArrow(targetVertex, targetNormal, lenVec, 0x888888);
+    const arrInvNorm = createArrow(targetVertex, localY, lenVec, 0x00FFFF);
+    const arrUp = createArrow(targetVertex, worldUp, lenVec, 0xFFFFFF);
+    const arrRight = createArrow(targetVertex, localX, lenVec, 0xFF0000);
+    const arrTrueUp = createArrow(targetVertex, localZ, lenVec, 0x00FF00);
+
+    // ==========================================
+    // 6. TIA RAY VÀ TÍNH TOÁN RAYCAST
+    // ==========================================
+    const rays = [];
+    const rayMatObj = new THREE.LineBasicMaterial({ color: 0xFFFF00, transparent: true, opacity: 0, linewidth: 2 });
+    for(let i=0; i<numPoints; i++) {
+        const geo = new THREE.BufferGeometry().setFromPoints([targetVertex, targetVertex]);
+        const line = new THREE.Line(geo, rayMatObj);
+        line.visible = false;
+        scene.add(line);
+        rays.push(line);
+    }
+
+    const raycaster = new THREE.Raycaster();
+    const intersectPts = [];
+    const hitDistances = [];
+    const intersectDots = [];
+
+    for(let i=0; i<numPoints; i++){
+        const localDir = ptData[i].pInner.clone().normalize();
+        const worldDir = localDir.clone().applyQuaternion(finalQuat).normalize();
+
+        raycaster.set(targetVertex.clone().add(worldDir.clone().multiplyScalar(0.01)), worldDir);
+        const intersects = raycaster.intersectObjects(faces, false);
+
+        if(intersects.length > 0) {
+            intersectPts.push(intersects[0].point);
+            hitDistances.push(intersects[0].distance + 0.01);
+        } else {
+            intersectPts.push(targetVertex.clone().add(worldDir.clone().multiplyScalar(15)));
+            hitDistances.push(15);
+        }
+
+        const dot = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), new THREE.MeshBasicMaterial({ color: 0xFF0000 }));
+        dot.visible = false;
+        scene.add(dot);
+        intersectDots.push(dot);
+    }
+
+    const validHits = hitDistances.filter(d => d < 15);
+    const avgDist = validHits.length > 0 ? (validHits.reduce((a,b)=>a+b, 0) / validHits.length) : 0;
+
+    // ==========================================
+    // 7. CÔNG THỨC & STATE MACHINE (14 BƯỚC)
+    // ==========================================
+    const mathFormulas = [
+        "\text{Step 0:} \quad \text{Khởi tạo Ray \& Camera}", // Step 0
+        "\text{Step 1:} \quad \text{Sinh tia (Mặt phẳng 2D)}", // Step 1
+        "\text{Step 2:} \quad \text{Chỉnh góc Theta}", // Step 2
+        "\text{Step 3:} \quad \text{Auto-Generate 20 Uniform Rays}", // Step 3
+        "\text{Step 4:} \quad \vec{N}_{vertex}", // Step 4 (was 5)
+        "\text{Step 5:} \quad {\color{#00FFFF}\vec{Y}} = {\color{#00FFFF}\vec{N}_{inv}} = -\vec{N}_{vertex}", // Step 5 (was 6)
+        "\text{Step 6:} \quad \vec{Up} = (0, 1, 0)", // Step 6 (was 7)
+        "\text{Step 7:} \quad {\color{#FF0000}\vec{X}} = \vec{Up} \times {\color{#00FFFF}\vec{Y}}", // Step 7 (was 8)
+        "\text{Step 8:} \quad {\color{#FF0000}\vec{X}} = \vec{Up} \times {\color{#00FFFF}\vec{Y}}", // Step 8 (was 9)
+        "\text{Step 9:} \quad {\color{#00FF00}\vec{Z}} = {\color{#FF0000}\vec{X}} \times {\color{#00FFFF}\vec{Y}}", // Step 9 (was 10)
+        "\text{Step 10:} \quad M_{rot} = [{\color{#FF0000}\vec{X}}, {\color{#00FFFF}\vec{Y}}, {\color{#00FF00}\vec{Z}}]", // Step 10 (was 11)
+        "\text{Step 11:} \quad M_{rot} \times \text{Random Ray}_{rand}", // Step 11 (was 12)
+        "\text{Step 12:} \quad Ray_{i\_rand} \to \infty", // Step 12 (was 13)
+        `\text{Step 13:} \quad d_{avg} = \frac{1}{${ptData.length}} \sum d_{i\_rand} \approx 0.00`, // Step 13 (was 14)
+        "\text{Step 14:} \quad \text{Compute SDF & Render Heatmap}" // Step 14 (was 15)
+    ];
+
+    const mathOverlay = document.getElementById('math-formula');
+    const hLabel = document.getElementById('h-label');
+
+    function updateMathFormulaImmediate(step) {
+        if (step === 0) {
+            mathOverlay.style.opacity = 0;
+            mathOverlay.style.display = 'none';
+        } else {
+            mathOverlay.style.display = 'block';
+            katex.render(mathFormulas[step], mathOverlay, { throwOnError: false });
+            mathOverlay.style.opacity = 1;
+        }
+    }
+
+    async function changeMathFormula(step) {
+        if (mathOverlay.style.opacity > 0 && mathOverlay.style.display !== 'none') {
+            mathOverlay.style.opacity = 0;
+            await new Promise(r => setTimeout(r, 300));
+        }
+        if (step === 0) {
+            mathOverlay.style.display = 'none';
+        } else {
+            mathOverlay.style.display = 'block';
+            katex.render(mathFormulas[step], mathOverlay, { throwOnError: false });
+            mathOverlay.style.opacity = 1;
+        }
+    }
+
+    function updateLabels() {
+        if (window.currentStep === 1) {
+            hLabel.style.display = 'block';
+            thetaLabel.style.display = 'block';
+
+            const v1 = hMidPos.clone().applyMatrix4(coneGroup.matrixWorld).project(camera);
+            hLabel.style.left = `${(v1.x * 0.5 + 0.5) * window.innerWidth + 15}px`;
+            hLabel.style.top = `${(v1.y * -0.5 + 0.5) * window.innerHeight}px`;
+
+            const vTheta = thetaPos.clone().applyMatrix4(coneGroup.matrixWorld).project(camera);
+            thetaLabel.style.left = `${(vTheta.x * 0.5 + 0.5) * window.innerWidth}px`;
+            thetaLabel.style.top = `${(vTheta.y * -0.5 + 0.5) * window.innerHeight}px`;
+        } else {
+            hLabel.style.display = 'none';
+            thetaLabel.style.display = 'none';
+        }
+    }
+
+    const MAX_STEPS = 14;
+    window.currentStep = 0;
+    let isAnimating = false;
+
+    function tweenObj(obj, props, duration, easing = TWEEN.Easing.Quadratic.Out, onUpdate = null) {
+        return new Promise(resolve => {
+            const tween = new TWEEN.Tween(obj).to(props, duration).easing(easing).onComplete(resolve);
+            if (onUpdate) tween.onUpdate(onUpdate);
+            tween.start();
+        });
+    }
+
+    function snapToStep(step, snapCamera = true) {
+        coneGroup.position.copy(coneInitialPos);
+        coneGroup.quaternion.identity();
+        
+        if (step >= 11 && step < 14) {
+            coneGroup.position.copy(targetVertex);
+            coneGroup.quaternion.copy(finalQuat);
+        }
+
+        coneMesh.material.opacity = (step >= 1 && step < 12) ? 0.3 : 0;
+        coneEdges.material.opacity = (step >= 1 && step < 12) ? 0.7 : 0;
+
+        [hLine, rLine, hypLine, hypLine2, arcLine].forEach(l => {
+            l.visible = (step === 1);
+            l.material.opacity = (step === 1) ? 1 : 0;
+        });
+
+        ptMeshes.forEach((pt, i) => {
+            if (!ptData[i]) return;
+            const isUser = ptData[i].isUser;
+            if (step === 1 || step === 2) {
+                pt.visible = isUser;
+                pt.material.opacity = isUser ? 1 : 0;
+            } else if (step >= 3 && step < 13) {
+                pt.visible = !isUser;
+                pt.material.opacity = !isUser ? 1 : 0;
+            } else {
+                pt.visible = false;
+            }
+            pt.scale.set(1, 1, 1);
+            if (pt.visible) pt.position.copy(ptData[i].pInner);
+        });
+
+        radialLines.forEach((rl, i) => {
+            if (!ptData[i]) return;
+            const isUser = ptData[i].isUser;
+            if (step === 1 || step === 2) {
+                rl.visible = isUser;
+                rl.material.opacity = isUser ? 0.8 : 0;
+                rl.geometry.setFromPoints([new THREE.Vector3(0, 0, 0), ptData[i].pInner]);
+            } else if (step >= 3 && step < 12) {
+                rl.visible = !isUser;
+                rl.material.opacity = !isUser ? 0.8 : 0;
+                const endPt = (step === 3 && !isUser) ? ptData[i].pInner.clone().normalize().multiplyScalar(50) : ptData[i].pInner;
+                rl.geometry.setFromPoints([new THREE.Vector3(0, 0, 0), endPt]);
+            } else {
+                rl.visible = false;
+            }
+        });
+
+        vertexDot.visible = (step >= 4);
+        vertexDot.scale.set(1, 1, 1);
+
+        arrNorm.visible = (step === 4);
+        if (step === 4) arrNorm.setLength(lenVec, lenVec*0.2, lenVec*0.15);
+
+        arrInvNorm.visible = (step >= 5);
+        if (step >= 5) arrInvNorm.setLength(lenVec, lenVec*0.2, lenVec*0.15);
+
+        arrUp.visible = (step === 6 || step === 7);
+        if (step === 6 || step === 7) arrUp.setLength(lenVec, lenVec*0.2, lenVec*0.15);
+
+        arrRight.visible = (step >= 7);
+        if (step >= 7) arrRight.setLength(lenVec, lenVec*0.2, lenVec*0.15);
+
+        arrTrueUp.visible = (step >= 9);
+        if (step >= 9) arrTrueUp.setLength(lenVec, lenVec*0.2, lenVec*0.15);
+
+        rays.forEach((r, i) => {
+            r.visible = (step >= 12);
+            if (step >= 12) {
+                r.material.opacity = 0.8;
+                const startPt = targetVertex;
+                let endPt = intersectPts[i] || targetVertex;
+                if (step === 12) {
+                    const dir = ptData[i].pInner.clone().normalize().applyQuaternion(finalQuat);
+                    endPt = startPt.clone().add(dir.multiplyScalar(50));
+                }
+                r.geometry.setFromPoints([startPt, endPt]);
+            }
+        });
+
+        intersectDots.forEach((dot, i) => {
+            if(step >= 13 && hitDistances[i] < 15) {
+                dot.visible = true;
+                dot.position.copy(intersectPts[i]);
+                dot.scale.set(1,1,1);
+            } else {
+                dot.visible = false;
+            }
+        });
+
+        if (snapCamera) {
+            if (step >= 12) {
+                controls.target.copy(targetVertex);
+                camera.position.set(targetVertex.x - 5, targetVertex.y + 2, targetVertex.z + 8);
+            } else if (step >= 11) {
+                controls.target.copy(targetVertex);
+                camera.position.set(targetVertex.x + 6, targetVertex.y + 4, targetVertex.z + 4);
+            } else if (step >= 4) {
+                controls.target.copy(targetVertex);
+                camera.position.set(targetVertex.x + 3, targetVertex.y + 3, targetVertex.z + 8);
+            } else if (step >= 2 && step <= 3) {
+                controls.target.set(0, coneHeight, 0);
+                camera.position.set(0.1, 12, 0.1);
+            } else {
+                controls.target.copy(coneInitialPos);
+                camera.position.copy(startCamPos);
+            }
+        }
+        
+        if (step === 14) {
+            computeHeatmap();
+        } else {
+            faces.forEach(mesh => {
+                const colAttr = mesh.geometry.attributes.color;
+                if (colAttr) {
+                    for(let i=0; i<colAttr.count; i++) colAttr.setXYZ(i, 1, 1, 1);
+                    colAttr.needsUpdate = true;
+                }
+                mesh.material.color.setHex(0x1155AA);
+            });
+        }
+    }
+
+    async function animateTransition(step) {
+    changeMathFormula(step);
+    try {
+        const module = await import(`./steps/step${step}.js`);
+        if (module.animate) {
+            await module.animate();
+        }
+    } catch (e) {
+        console.error(`Failed to load step${step}.js`, e);
+    }
+}
+
+    async function goToStep(step) {
+        step = Math.max(0, Math.min(step, MAX_STEPS));
+        if (step === window.currentStep && !isAnimating) return;
+
+        TWEEN.removeAll();
+        window.isCameraPanning = false;
+
+        if (step < window.currentStep) {
+            window.currentStep = step;
+            snapToStep(window.currentStep, true);
+            isAnimating = false;
+        } else {
+            if (isAnimating) {
+                snapToStep(window.currentStep, true);
+                isAnimating = false;
+                return;
+            }
+            isAnimating = true;
+            // Không snap camera khi tiến, trượt mượt mà từ vị trí người dùng đang ngắm
+            snapToStep(window.currentStep, false);
+            window.currentStep = step;
+            await animateTransition(window.currentStep);
+            isAnimating = false;
+        }
+    }
+
+    let startX, startY;
+    document.addEventListener('contextmenu', e => e.preventDefault());
+    document.addEventListener('pointerdown', e => { startX = e.clientX; startY = e.clientY; });
+    document.addEventListener('pointerup', e => {
+        const dx = e.clientX - startX, dy = e.clientY - startY;
+        if (Math.sqrt(dx*dx + dy*dy) < 5) {
+            if (e.button === 0) goToStep(window.currentStep + 1);
+            else if (e.button === 2) goToStep(window.currentStep - 1);
+        }
+    });
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    
+window.SC = {
+    scene, camera, renderer, controls,
+    coneGroup, mathGroup, pointsGroup, modelGroup,
+    hLine, rLine, hypLine, hypLine2, arcLine,
+    coneMesh, coneEdges,
+    targetVertex, targetNormal, invNormal, vertexDot,
+    arrNorm, arrInvNorm, arrUp, arrRight, arrTrueUp,
+    coneInitialPos, startCamPos, finalQuat,
+    coneHeight, coneRadius,
+    tweenObj, tweenArrow,
+    updateRayIntersections, computeHeatmap, ensureRandomRays,
+    faces, rays, intersectDots
+};
+
+snapToStep(0);
+
+    function animate(time) {
+        requestAnimationFrame(animate);
+        TWEEN.update(time);
+
+        // Liên tục cập nhật các đường tia đỏ bám dính vào hạt
+        radialLines.forEach((rl, i) => {
+            if (rl.visible) {
+                const pt = ptMeshes[i].position;
+                let endPt = pt;
+                if (window.currentStep === 3 && ptData[i] && !ptData[i].isUser) {
+                    endPt = pt.clone().normalize().multiplyScalar(50);
+                }
+                rl.geometry.setFromPoints([new THREE.Vector3(0, 0, 0), endPt]);
+            }
+        });
+
+        // Auto Rotate chỉ hoạt động khi Camera không bị Panning bởi Code
+        controls.autoRotate = !window.isCameraPanning;
+        controls.update();
+
+        updateLabels();
+        renderer.render(scene, camera);
+    }
+    animate();

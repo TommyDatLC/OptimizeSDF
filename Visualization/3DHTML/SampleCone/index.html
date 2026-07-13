@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Cone Geometry Visualization - Modular</title>
+    <link rel="stylesheet" href="css/style.css?v=16">
+    <!-- Load KaTeX -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <!-- Load TWEEN and Three via Import Map -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+                "@tweenjs/tween.js": "https://unpkg.com/@tweenjs/tween.js@23.1.1/dist/tween.esm.js"
+            }
+        }
+    </script>
+</head>
+<body>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+                "@tweenjs/tween.js": "https://unpkg.com/@tweenjs/tween.js@23.1.1/dist/tween.esm.js"
+            }
+        }
+    </script>
+</head>
+<body>
+<button id="grid-toggle">🔲 Grid: OFF</button>
+<button id="bg-toggle">🌙 Dark</button>
+<div id="math-formula"></div>
+<div id="h-label">1</div>
+<div id="theta-label"></div>
+
+
+<div id="panel-step1" class="control-panel">
+    <h3>Step 1: Tạo tia (uv.x)</h3>
+    <button id="btnAddRay">+ Thêm Ray mới</button>
+    <div id="ray-list-step1"></div>
+</div>
+
+<div id="panel-step2" class="control-panel" style="display:none;">
+    <h3>Step 2: Chỉnh góc (uv.y)</h3>
+    <div id="ray-list-step2"></div>
+</div>
+
+<div id="controls-hint">
+    <span>🖱️ Trái: Bước tiếp theo</span>
+    <span>🖱️ Phải: Lùi lại</span>
+    <span>🖐️ Kéo: Xoay Camera</span>
+</div>
+    <script type="module" src="js/main.js?v=41"></script>
+</body>
+</html>
