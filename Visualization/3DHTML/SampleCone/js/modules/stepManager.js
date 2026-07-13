@@ -23,8 +23,9 @@ export function setupStepManager(SC) {
         "\\text{Step 10:} \\quad M_{rot} = [{\\color{#FF0000}\\vec{X}}, {\\color{#00FFFF}\\vec{Y}}, {\\color{#00FF00}\\vec{Z}}]", // Step 10
         "\\text{Step 11:} \\quad M_{rot} \\times \\text{Random Ray}_{rand}", // Step 11
         "\\text{Step 12:} \\quad Ray_{i\\_rand} \\to \\infty", // Step 12
-        `\\text{Step 13:} \\quad d_{avg} = \\frac{1}{${ptData.length}} \\sum d_{i\\_rand} \\approx 0.00`, // Step 13
-        "\\text{Step 14:} \\quad \\text{Loop over Vertices \\& Compute SDF}" // Step 14
+        `\\text{Step 13:} \\quad d_{avg} = \\frac{1}{${ptData.length}} \\sum d_{i\\_rand}`, // Step 13
+        "\\text{Step 14:} \\quad SDF_{target} = d_{avg}", // Step 14
+        "\\text{Step 15:} \\quad \\text{Loop over Vertices \\& Compute SDF}" // Step 15
     ];
 
     const mathOverlay = document.getElementById('math-formula');
@@ -74,7 +75,7 @@ export function setupStepManager(SC) {
         }
     }
 
-    const MAX_STEPS = 14;
+    const MAX_STEPS = 15;
     window.currentStep = 0;
     let isAnimating = false; window.isAnimating = false;
 
@@ -223,8 +224,13 @@ export function setupStepManager(SC) {
             }
         }
         
-        if (step === 14) {
+        if (step === 15) {
             if (window.SC && window.SC.computeFullHeatmap) window.SC.computeFullHeatmap(); else computeFullHeatmap();
+        } else if (step === 14) {
+            if (window.SC && window.SC.resetHeatmap) window.SC.resetHeatmap();
+            if (window.SC && window.SC.updateHeatmapProgressive) window.SC.updateHeatmapProgressive(targetVertex);
+            rays.forEach(r => r.visible = false);
+            intersectDots.forEach(d => d.visible = false);
         } else {
             faces.forEach(mesh => {
                 const colAttr = mesh.geometry.attributes.color;
@@ -446,6 +452,28 @@ export function setupStepManager(SC) {
         else if (step === 14) {
             document.body.style.pointerEvents = 'none'; // Lock interaction
             
+            const promises = rays.map((r, i) => {
+                if (!intersectPts[i]) return Promise.resolve();
+                return tweenObj({ t: 0 }, { t: 1 }, 1000, TWEEN.Easing.Cubic.InOut, obj => {
+                    const currentEnd = intersectPts[i].clone().lerp(targetVertex, obj.t);
+                    r.geometry.setFromPoints([targetVertex, currentEnd]);
+                    if (intersectDots[i]) intersectDots[i].position.copy(currentEnd);
+                }).then(() => {
+                    r.visible = false;
+                    if (intersectDots[i]) intersectDots[i].visible = false;
+                });
+            });
+            await Promise.all(promises);
+            
+            if (window.SC && window.SC.resetHeatmap) window.SC.resetHeatmap();
+            if (window.SC && window.SC.updateHeatmapProgressive) window.SC.updateHeatmapProgressive(targetVertex);
+            
+            await new Promise(r => setTimeout(r, 800));
+            document.body.style.pointerEvents = 'auto'; // Unlock interaction
+        }
+        else if (step === 15) {
+            document.body.style.pointerEvents = 'none'; // Lock interaction
+            
             // Pan camera to view the entire box before jumping
             window.isCameraPanning = true;
             const boxCenter = modelGroup.position.clone();
@@ -469,8 +497,8 @@ export function setupStepManager(SC) {
                 const vWorld = vLocal.clone().applyMatrix4(modelGroup.matrixWorld);
                 
                 // --- Detailed logs ---
-                console.log(`\n--- Vòng lặp Step 14 ---`);
-                console.log(`[Step 14 Loop] Đỉnh Cone mục tiêu (vWorld): ${vWorld.x.toFixed(3)}, ${vWorld.y.toFixed(3)}, ${vWorld.z.toFixed(3)}`);
+                console.log(`\n--- Vòng lặp Step 15 ---`);
+                console.log(`[Step 15 Loop] Đỉnh Cone mục tiêu (vWorld): ${vWorld.x.toFixed(3)}, ${vWorld.y.toFixed(3)}, ${vWorld.z.toFixed(3)}`);
                 
                 if (window.SC && window.SC.updateHeatmapProgressive) {
                     window.SC.updateHeatmapProgressive(vWorld);
@@ -490,8 +518,8 @@ export function setupStepManager(SC) {
                 coneGroup.quaternion.copy(q);
                 coneGroup.updateMatrixWorld(true);
                 
-                console.log(`[Step 14 Loop] Đỉnh Cone thực tế (coneGroup.position): ${coneGroup.position.x.toFixed(3)}, ${coneGroup.position.y.toFixed(3)}, ${coneGroup.position.z.toFixed(3)}`);
-                console.log(`[Step 14 Loop] Khớp vị trí đỉnh? ${coneGroup.position.distanceTo(vWorld) < 0.001 ? "CÓ" : "KHÔNG"}`);
+                console.log(`[Step 15 Loop] Đỉnh Cone thực tế (coneGroup.position): ${coneGroup.position.x.toFixed(3)}, ${coneGroup.position.y.toFixed(3)}, ${coneGroup.position.z.toFixed(3)}`);
+                console.log(`[Step 15 Loop] Khớp vị trí đỉnh? ${coneGroup.position.distanceTo(vWorld) < 0.001 ? "CÓ" : "KHÔNG"}`);
                 
                 coneMesh.material.opacity = 0.3;
                 coneEdges.material.opacity = 0.7;

@@ -1,0 +1,179 @@
+body {
+    margin: 0;
+    overflow: hidden;
+    background-color: #050510;
+    color: white;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+#canvas-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 1;
+}
+
+#bottom-panel {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100vw;
+    height: 0vh; /* Animates to 50vh */
+    background-color: rgba(10, 15, 30, 0.95);
+    border-top: 2px solid #2288FF;
+    z-index: 10;
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: flex-start;
+    padding-top: 5vh;
+    overflow: hidden;
+}
+
+#ui-overlay {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    z-index: 100;
+    background: rgba(0, 0, 0, 0.6);
+    padding: 15px 25px;
+    border-radius: 8px;
+    border: 1px solid #333;
+}
+
+#ui-overlay h2 {
+    margin: 0 0 10px 0;
+    color: #2288FF;
+}
+
+#step-description {
+    font-size: 1.2em;
+    font-weight: bold;
+}
+
+#controls-hint {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.7);
+    padding: 10px 20px;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    z-index: 100;
+    border: 1px solid #444;
+}
+
+.nav-btn {
+    background-color: #2288FF;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 5px;
+    font-size: 1em;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background-color 0.2s;
+}
+
+.nav-btn:hover {
+    background-color: #44AAFF;
+}
+
+.nav-btn:active {
+    background-color: #1166CC;
+}
+
+/* Matrix Styling */
+#matrix-container {
+    padding: 20px;
+    text-align: center;
+}
+
+#matrix-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 40px); /* 6 cols + 1 for row headers */
+    grid-template-rows: repeat(7, 40px);
+    gap: 2px;
+    margin-top: 10px;
+}
+
+.matrix-cell {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: #111;
+    border: 1px solid #333;
+    font-weight: bold;
+    border-radius: 4px;
+    transition: all 0.3s ease;
+    position: relative; /* For animation */
+}
+
+.matrix-header {
+    background-color: #2288FF !important;
+    color: white;
+}
+
+.matrix-val-1 {
+    background-color: #00FF00;
+    color: black;
+}
+
+.matrix-val-0 {
+    background-color: #222;
+    color: #555;
+}
+
+/* CSR Styling */
+#csr-container {
+    padding: 20px;
+    margin-left: 50px;
+}
+
+.csr-array-group {
+    margin-bottom: 20px;
+}
+
+.csr-label {
+    font-weight: bold;
+    margin-bottom: 5px;
+    color: #88CCFF;
+}
+
+.csr-array {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+}
+
+.csr-cell {
+    width: 30px;
+    height: 30px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: #111;
+    border: 1px solid #444;
+    font-weight: bold;
+    border-radius: 2px;
+    transition: all 0.3s ease;
+}
+
+.csr-val { background-color: #00FF00; color: black; }
+.csr-col { background-color: #FFAA00; color: black; }
+.csr-ptr { background-color: #FF00FF; color: white; }
+
+/* The flying cells for animation */
+.flying-cell {
+    position: fixed;
+    z-index: 1000;
+    pointer-events: none;
+    transition: all 1.5s cubic-bezier(0.19, 1, 0.22, 1); /* EaseInOutExpo approx */
+}

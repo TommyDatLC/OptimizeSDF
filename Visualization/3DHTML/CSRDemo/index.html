@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSR Compression Visualization</title>
+    <link rel="stylesheet" href="css/style.css">
+    
+    <!-- Import map for Three.js and Tween.js -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+                "@tweenjs/tween.js": "https://unpkg.com/@tweenjs/tween.js@23.1.1/dist/tween.esm.js"
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    
+    <!-- The bottom panel that slides up -->
+    <div id="bottom-panel">
+        <div id="matrix-container">
+            <h3>Adjacency Matrix</h3>
+            <div id="matrix-grid"></div>
+        </div>
+        
+        <div id="csr-container" style="display: none; opacity: 0;">
+            <h3>Compressed Sparse Row (CSR)</h3>
+            
+            <div class="csr-array-group">
+                <div class="csr-label">Values (Non-zero):</div>
+                <div class="csr-array" id="csr-values"></div>
+            </div>
+            
+            <div class="csr-array-group">
+                <div class="csr-label">Column Indices:</div>
+                <div class="csr-array" id="csr-columns"></div>
+            </div>
+            
+            <div class="csr-array-group">
+                <div class="csr-label">Row Pointers:</div>
+                <div class="csr-array" id="csr-rowptr"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- UI Overlay -->
+    <div id="ui-overlay">
+        <h2>CSR Compression</h2>
+        <div id="step-description">Step 1: 3D Model</div>
+    </div>
+    
+    <div id="controls-hint">
+        <button id="btn-prev" class="nav-btn">⬅️ Previous Step</button>
+        <button id="btn-next" class="nav-btn">Next Step ➡️</button>
+        <span style="margin-left: 20px;">⌨️ Or use Left/Right Arrow Keys</span>
+        <span style="margin-left: 20px;">🖐️ Drag: Rotate Camera</span>
+    </div>
+
+    <script type="module" src="js/main.js?v=7"></script>
+</body>
+</html>

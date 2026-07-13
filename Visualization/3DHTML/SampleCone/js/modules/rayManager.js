@@ -118,17 +118,24 @@ function addRayData(uvx, uvy, isUser = false) {
         
         ptData.push({ uvx, uvy, pInner, isUser });
         
-        const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8), new THREE.MeshBasicMaterial({ color: isUser ? 0x00FF00 : 0xFFFFFF }));
+        const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8), new THREE.MeshBasicMaterial({ color: isUser ? 0x00FF00 : 0xFFFFFF, transparent: true, opacity: 1 }));
         mesh.position.copy(pInner);
-        mesh.visible = window.currentStep >= 1 && window.currentStep < 13;
+        mesh.visible = true; // FORCE VISIBLE FOR DEBUG
         pointsGroup.add(mesh);
         ptMeshes.push(mesh);
         
         const rGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), pInner]);
-        const rLineObj = new THREE.Line(rGeo, new THREE.LineBasicMaterial({ color: 0xFF0000, transparent: true, opacity: window.currentStep >= 1 && window.currentStep < 13 ? 0.8 : 0, linewidth: 2 }));
-        rLineObj.visible = window.currentStep >= 1 && window.currentStep < 12;
+        const rMatDebug = new THREE.LineBasicMaterial({ color: 0xFF0000, transparent: true, opacity: 1, linewidth: 3 });
+        const rLineObj = new THREE.Line(rGeo, rMatDebug);
+        rLineObj.visible = true; // FORCE VISIBLE FOR DEBUG
         coneGroup.add(rLineObj);
         radialLines.push(rLineObj);
+
+        console.warn(`[DEBUG RAY] Ray #${idx} created! isUser=${isUser}`);
+        console.warn(`[DEBUG RAY] pInner: (${pInner.x.toFixed(2)}, ${pInner.y.toFixed(2)}, ${pInner.z.toFixed(2)})`);
+        console.warn(`[DEBUG RAY] Mesh Visible: ${mesh.visible}, Opacity: ${mesh.material.opacity}, Pos:`, mesh.position);
+        console.warn(`[DEBUG RAY] Line Visible: ${rLineObj.visible}, Opacity: ${rLineObj.material.opacity}`);
+        console.warn(`[DEBUG RAY] coneGroup children count: ${coneGroup.children.length}`);
         
         if (targetVertex) {
             const rayLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([targetVertex, targetVertex]), rayMatObj.clone());
@@ -149,13 +156,33 @@ function addRayData(uvx, uvy, isUser = false) {
             const d1 = document.createElement('div');
             d1.className = 'ray-item';
             d1.innerHTML = `Ray #${idx+1}: <span style="font-family: math; font-size: 1.1em;">y = R [ cos(&theta;<sub>max</sub>) + (1 - cos(&theta;<sub>max</sub>)) &times; <input type="number" step="0.01" min="0" max="1" value="${uvx.toFixed(2)}" data-idx="${idx}"> ]</span>`;
-            if (list1) list1.appendChild(d1);
+            if (list1) {
+                list1.appendChild(d1);
+                const inp1 = d1.querySelector('input');
+                if (inp1) {
+                    inp1.addEventListener('input', e => {
+                        ptData[idx].uvx = parseFloat(e.target.value) || 0;
+                        updatePointPosition(idx);
+                        if (window.currentStep >= 12) updateRayIntersections();
+                    });
+                }
+            }
             
             const list2 = document.getElementById('ray-list-step2');
             const d2 = document.createElement('div');
             d2.className = 'ray-item';
             d2.innerHTML = `Ray #${idx+1}: <span style="font-family: math; font-size: 1.1em;">&phi; = 2&pi; &times; <input type="number" step="0.01" min="0" max="1" value="${uvy.toFixed(2)}" data-idx="${idx}"></span>`;
-            if (list2) list2.appendChild(d2);
+            if (list2) {
+                list2.appendChild(d2);
+                const inp2 = d2.querySelector('input');
+                if (inp2) {
+                    inp2.addEventListener('input', e => {
+                        ptData[idx].uvy = parseFloat(e.target.value) || 0;
+                        updatePointPosition(idx);
+                        if (window.currentStep >= 12) updateRayIntersections();
+                    });
+                }
+            }
         }
 return idx;
     }

@@ -2,10 +2,10 @@
 import * as THREE from 'three';
 import TWEEN from '@tweenjs/tween.js';
 window.TWEEN = TWEEN;
-import { setupScene } from './modules/sceneSetup.js?v=41';
-import { setupGeometry } from './modules/geometry.js?v=41';
-import { setupRays } from './modules/rayManager.js?v=41';
-import { setupStepManager } from './modules/stepManager.js?v=41';
+import { setupScene } from './modules/sceneSetup.js?v=48';
+import { setupGeometry } from './modules/geometry.js?v=48';
+import { setupRays } from './modules/rayManager.js?v=48';
+import { setupStepManager } from './modules/stepManager.js?v=48';
 
 const ptData = [];
 const ptMeshes = [];
@@ -49,6 +49,20 @@ document.addEventListener('pointerup', e => {
         else if (e.button === 2) SC.goToStep(window.currentStep - 1);
     }
 });
+
+// Prevent click propagation from control panels
+document.querySelectorAll('.control-panel').forEach(panel => {
+    panel.addEventListener('pointerdown', e => e.stopPropagation());
+    panel.addEventListener('pointerup', e => e.stopPropagation());
+});
+
+const btnAddRay = document.getElementById('btnAddRay');
+if (btnAddRay) {
+    btnAddRay.addEventListener('click', (e) => {
+        e.stopPropagation();
+        SC.addRayData(Math.random(), 0, true);
+    });
+}
 
 window.addEventListener('resize', () => {
     SC.camera.aspect = window.innerWidth / window.innerHeight;
