@@ -252,20 +252,30 @@ export function setupStepManager(SC) {
 
         if (step === 1) {
             [hLine, rLine, hypLine, hypLine2].forEach(l => l.visible = true);
-            await Promise.all([
+            const animPromises = [
                 tweenObj(coneMesh.material, { opacity: 0.3 }, 800),
                 tweenObj(coneEdges.material, { opacity: 0.7 }, 800),
                 tweenObj(hLine.material, { opacity: 1 }, 800)
-            ]);
-            // If rays were added, fade them in
+            ];
+            
+            // If rays were added, fade them in and animate uvy to 0
             ptMeshes.forEach((pt, i) => {
-                if (ptData[i] && ptData[i].isUser) {
+                if (SC.ptData[i] && SC.ptData[i].isUser) {
                     pt.visible = true;
-                    tweenObj(pt.material, { opacity: 1 }, 600);
+                    animPromises.push(tweenObj(pt.material, { opacity: 1 }, 600));
+                    
+                    if (SC.ptData[i].uvy !== 0) {
+                        const tempObj = { uvy: SC.ptData[i].uvy };
+                        animPromises.push(tweenObj(tempObj, { uvy: 0 }, 800, window.TWEEN.Easing.Quadratic.Out, () => {
+                            SC.ptData[i].uvy = tempObj.uvy;
+                            SC.updatePointPosition(i);
+                        }));
+                    }
                 } else {
                     pt.visible = false;
                 }
             });
+            await Promise.all(animPromises);
             radialLines.forEach((rl, i) => {
                 if (ptData[i] && ptData[i].isUser) {
                     rl.visible = true;
@@ -280,20 +290,35 @@ export function setupStepManager(SC) {
             [hLine, rLine, hypLine, hypLine2, arcLine].forEach(l => {
                 tweenObj(l.material, { opacity: 0 }, 500).then(()=> l.visible = false);
             });
+            
+            const animPromises = [];
             // Ensure user rays are explicitly visible and fully opaque
             ptMeshes.forEach((pt, i) => {
-                if (ptData[i] && ptData[i].isUser) {
+                if (SC.ptData[i] && SC.ptData[i].isUser) {
                     pt.visible = true;
                     pt.material.opacity = 1;
+                    
+                    if (SC.ptData[i].uvy === 0) {
+                        const targetUvy = Math.random();
+                        const tempObj = { uvy: 0 };
+                        animPromises.push(tweenObj(tempObj, { uvy: targetUvy }, 1000, window.TWEEN.Easing.Quadratic.Out, () => {
+                            SC.ptData[i].uvy = tempObj.uvy;
+                            SC.updatePointPosition(i);
+                            const inp = document.querySelector(`#ray-list-step2 input[data-idx="${i}"]`);
+                            if (inp) inp.value = tempObj.uvy.toFixed(2);
+                        }));
+                    }
                 }
             });
             radialLines.forEach((rl, i) => {
-                if (ptData[i] && ptData[i].isUser) {
+                if (SC.ptData[i] && SC.ptData[i].isUser) {
                     rl.visible = true;
                     rl.material.opacity = 0.8;
                 }
             });
-            await new Promise(r => setTimeout(r, 500));
+            
+            animPromises.push(new Promise(r => setTimeout(r, 1000)));
+            await Promise.all(animPromises);
         }
         else if (step === 3) {
             ensureRandomRays();

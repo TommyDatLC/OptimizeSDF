@@ -60,7 +60,10 @@ const btnAddRay = document.getElementById('btnAddRay');
 if (btnAddRay) {
     btnAddRay.addEventListener('click', (e) => {
         e.stopPropagation();
-        SC.addRayData(Math.random(), 0, true);
+        const stepValue = window.currentStep;
+        const uvy = stepValue === 1 ? 0 : Math.random();
+        console.log(`[AddRayClick] window.currentStep = ${stepValue}. Calculated uvy = ${uvy}`);
+        SC.addRayData(Math.random(), uvy, true);
     });
 }
 
@@ -70,6 +73,7 @@ window.addEventListener('resize', () => {
     SC.renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
+window.currentStep = 1;
 SC.snapToStep(1);
 
 function animate(time) {

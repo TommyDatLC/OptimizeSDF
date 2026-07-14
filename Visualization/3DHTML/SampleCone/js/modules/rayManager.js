@@ -398,11 +398,9 @@ function computeFullHeatmap() {
 }
 
     return {
-
-
         pointsGroup, circleLine,
         rays, intersectDots, rayMatObj,
-        intersectPts, hitDistances,
-        addRayData, updateRayIntersections, resetHeatmap, updateHeatmapProgressive, computeFullHeatmap, ensureRandomRays
+        intersectPts, hitDistances, ptData,
+        addRayData, updatePointPosition, updateRayIntersections, resetHeatmap, updateHeatmapProgressive, computeFullHeatmap, ensureRandomRays
     };
 }
