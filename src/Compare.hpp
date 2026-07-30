@@ -21,7 +21,7 @@ inline void LoadPyHeatMap(Model& model, const std::string& pymeshlab_sdf_file_di
         lineCount++;
 
         // Loại bỏ ký tự xuống dòng ẩn của Windows
-        if (!line.empty() && line.back() == '\r') {
+        if (!line.empty () && line.back() == '\r') {
             line.pop_back();
         }
         if (line.empty()) continue;

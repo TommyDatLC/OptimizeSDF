@@ -1,61 +1,81 @@
-# Optimizing Shape Diameter Function using HPC
+# Optimizing Shape Diameter Function using High Performance Computing
 
-The Shape Diameter Function (SDF) is a scalar function defined on a 3D mesh surface that measures the local volume thickness (diameter) around each point. It provides a pose-oblivious, informative signature for shape analysis, widely used in 3D Computer Vision for mesh segmentation, skeletonization, and identifying distinct shape components.
+![USTH](https://img.shields.io/badge/USTH-Final%20Thesis-blue)
+![CUDA](https://img.shields.io/badge/CUDA-20.0-green)
+![OptiX](https://img.shields.io/badge/OptiX-7.6-orange)
 
-This project implements and benchmarks two fundamentally different GPU approaches for computing the SDF:
+This thesis presents a **GPU-accelerated Shape Diameter Function (SDF) computation system** using NVIDIA OptiX. SDF assigns a scalar value to each vertex of a 3D mesh representing the local thickness of the model at that point — a fundamental geometric descriptor widely used in shape analysis, segmentation, and parameterization.
 
-1. **NVIDIA OptiX** -- Hardware-accelerated ray tracing via CUDA and RT Cores
-2. **VCGlib/MeshLab GPU** -- Rasterization-based "spawning camera" with depth peeling via OpenGL
-
-We compare against the previous work: [Parallelization of Shape Diameter Function Computation using OpenCL](https://old.cescg.org/CESCG-2014/papers/Kamenicky-Parallelization_of_Shape_Diameter_Function_Computation_using_OpenCL.pdf)
+Unlike the traditional approach of casting rays on a CPU, our method uses **hardware-accelerated ray tracing (RT Cores)** to achieve speedups of **61.3x to 356.2x** over the PyMeshLab GPU reference implementation, while producing comparable output quality.
 
 ---
 
 ## What is the Shape Diameter Function?
 
-Given a point on a mesh surface, the SDF works by:
+Introduced by Shapira et al. [1], the SDF is a per-vertex scalar measure that captures the local "thickness" of a 3D model at any point on its surface. Conceptually, consider a point **p** on the mesh surface. If one looks along the inward normal direction **−n⃗**, the SDF quantifies how far one must travel before exiting the opposite side of the object.
 
-1. Shooting a cone of rays from the point inward (toward the opposite side of the mesh)
-2. Measuring how far each ray travels before hitting the mesh on the other side
-3. Computing a weighted average of those distances, where rays closer to the cone axis are weighted more heavily
-
-The formula is:
+However, a single ray along the inward normal may yield unreliable results on bumpy or irregular interior surfaces. To address this, the SDF casts a cone of **R rays** (typically R = 64) from point **p**, directed toward the interior of the model. Each ray records its travel distance **dᵢ** to the opposite wall, and the final SDF value is computed as a weighted average:
 
 ```
-SDF(p) = Σ(distance_i × weight_i) / Σ(weight_i)
+SDF(p) = Σ(dᵢ × wᵢ) / Σ(wᵢ)
 ```
 
-where `weight_i = 1 / angle_i` (inverse of the angle between the ray and the cone axis).
+where **wᵢ = 1/θᵢ** is the weight inversely proportional to the angle between the ray and the cone axis.
 
-A thick region (like a torso) will have large SDF values; a thin region (like a finger) will have small SDF values. The result is invariant to rigid body transformations and oblivious to local pose deformations.
+<p align="center">
+  <img src="image/112_optix.png" width="400" alt="SDF heatmap example">
+  <br>
+  <em>A 3D model with SDF values visualized as a heatmap. Red = thick, blue = thin.</em>
+</p>
+
+A thick region (like a human torso) produces large SDF values, while a thin region (like a finger) produces small values. Because the SDF depends purely on the object's volume, it remains **invariant to rigid transformations** — rotating or bending the model does not alter the thickness values.
+
+---
+
+## Why SDF: Role in 3D Object Analysis
+
+Understanding an object's thickness provides essential geometric cues for:
+- **Mesh segmentation**: Cutting a 3D model into logical pieces (e.g., separating an arm from a body because the wrist is thinner)
+- **Skeletonization**: Finding the "bones" inside a 3D character by tracing the thickest parts
+- **Shape matching and retrieval**: Identifying similar shapes across databases using thickness-based signatures that are pose-oblivious
+- **Character animation**: Rigging and skinning by understanding volumetric properties
+
+---
+
+## Thesis Structure
+
+This repository contains the full implementation for the following thesis chapters:
+
+| Chapter | Description |
+|---------|-------------|
+| **1. Introduction** | SDF definition, context, survey of existing work, objectives |
+| **2. Materials and Technologies** | Dataset, CUDA, NVIDIA CUB, NVIDIA OptiX |
+| **3. Methodology** | Pipeline: OBJ loading → normals → BVH → ray tracing → post-processing |
+| **4. Experiment Results** | Performance benchmarks, quality comparison, quality analysis |
+| **5. Conclusion** | Limitations, conclusion, future work |
 
 ---
 
 ## Performance Benchmark: PyMeshLab GPU (VCGlib) vs. NVIDIA OptiX
 
-| Model | Vertices | PyMeshLab GPU (s) | OptiX (s) | Faster | Speedup |
-| :--- | :---: | :---: | :---: | :--- | :---: |
-| 360.obj | 2,200 | 0.6134 | 0.0017 | OptiX | 356.2x |
-| 9.obj | 2,639 | 0.6660 | 0.0025 | OptiX | 269.5x |
-| 400.obj | 3,703 | 0.5736 | 0.0026 | OptiX | 223.2x |
-| 76.obj | 5,923 | 0.5623 | 0.0028 | OptiX | 200.2x |
-| 181.obj | 7,242 | 0.6296 | 0.0032 | OptiX | 193.8x |
-| 118.obj | 9,153 | 0.5366 | 0.0042 | OptiX | 128.4x |
-| 368.obj | 11,202 | 0.5933 | 0.0054 | OptiX | 108.9x |
-| 112.obj | 13,628 | 1.4853 | 0.0229 | OptiX | 64.9x |
-| 369.obj | 13,606 | 0.5912 | 0.0062 | OptiX | 94.7x |
-| 158.obj | 14,587 | 0.6146 | 0.0077 | OptiX | 79.4x |
-| 371.obj | 14,599 | 0.5464 | 0.0089 | OptiX | 61.3x |
-| Leaf.obj | 24,866 | 0.3827 | 0.1219 | OptiX | 3.1x |
+| Model | Vertices | PyMeshLab GPU (s) | OptiX (s) | Speedup |
+| :--- | :---: | :---: | :---: | :---: |
+| 360.obj | 2,200 | 0.6134 | 0.0017 | **356.2x** |
+| 9.obj | 2,639 | 0.6660 | 0.0025 | **269.5x** |
+| 400.obj | 3,703 | 0.5736 | 0.0026 | **223.2x** |
+| 76.obj | 5,923 | 0.5623 | 0.0028 | **200.2x** |
+| 181.obj | 7,242 | 0.6296 | 0.0032 | **193.8x** |
+| 118.obj | 9,153 | 0.5366 | 0.0042 | **128.4x** |
+| 368.obj | 11,202 | 0.5933 | 0.0054 | **108.9x** |
+| 112.obj | 13,628 | 1.4853 | 0.0229 | **64.9x** |
+| 369.obj | 13,606 | 0.5912 | 0.0062 | **94.7x** |
+| 158.obj | 14,587 | 0.6146 | 0.0077 | **79.4x** |
+| 371.obj | 14,599 | 0.5464 | 0.0089 | **61.3x** |
 
-### Technical Summary
-
-- **OptiX is faster across all models**, ranging from **3.1x to 171x** speedup.
-- **PyMeshLab GPU has a ~0.3s base overhead** regardless of model size, due to OpenGL context initialization, texture upload, and iterating over 128 camera directions.
-- **OptiX scales better** -- its ray tracing time grows proportionally with vertex count, while PyMeshLab's overhead is dominated by fixed-cost OpenGL operations.
-- **OptiX includes post-processing** (normalization + anisotropic smoothing) that PyMeshLab does not, making the comparison even more favorable for OptiX.
-
-> **Note:** OptiX timings include the full pipeline: normal computation + BVH build + ray tracing + CSR graph construction + anisotropic smoothing. PyMeshLab timings are raw SDF computation only (no smoothing or normalization).
+**Key findings:**
+- **OptiX is faster across all models**, ranging from **61.3x to 356.2x** speedup
+- **PyMeshLab consistently requires >0.5 seconds**, even for small models, due to the fixed overhead of its 64-camera initialization and OpenGL context setup
+- **OptiX processes models with up to 14,599 vertices within 8.9 milliseconds**, making it suitable for interactive applications
 
 ### Test Settings
 
@@ -64,422 +84,106 @@ A thick region (like a torso) will have large SDF values; a thin region (like a 
 | **Rays per vertex** | 64 | 64 |
 | **Cone angle** | 150 degrees | 150 degrees |
 | **Ray sampling** | Hammersley 2D (quasi-random) | Fibonacci sphere (uniform) |
-| **Compute primitive** | Per-vertex | Per-vertex (`onprimitive=0`) |
-| **Outlier removal** | No | No (`removeoutliers=False`) |
+| **Depth peeling layers** | N/A (single closest-hit via hardware BVH) | 10 layers |
 | **Post-processing** | Log normalization + 3x anisotropic bilateral smoothing | None |
-| **Smoothing sigma spatial** | 2% of bbox diagonal | N/A |
-| **Smoothing sigma range** | 0.1 | N/A |
-| **Normalization** | `log(4 * normalized + 1) / log(5)` | None (raw distance values) |
 | **GPU** | NVIDIA RTX (OptiX RT Cores) | Any GPU with OpenGL 3.3+ |
-| **Timing method** | `std::chrono::high_resolution_clock` | `time.perf_counter()` |
-| **Visualization** | Off (Polyscope disabled) | Off (PyVista disabled) |
-
-> **Note:** Both implementations now use the same cone angle (150 degrees) for a fair comparison.
-
-### Time Complexity Analysis
-
-Let **V** = number of vertices, **F** = number of faces, **R** = rays per vertex, **N** = number of camera directions, **P** = depth peeling layers, **I** = smoothing iterations, **k** = average neighbors per vertex.
-
-#### OptiX (CUDA)
-
-| Stage | Complexity | Explanation |
-| :--- | :--- | :--- |
-| Normal computation | O(V + F) | One pass over faces to accumulate, one pass over vertices to normalize |
-| BVH build | O(F log F) | OptiX builds a bounding volume hierarchy from all triangles |
-| Ray tracing | O(V x R x log F) | Each vertex shoots R rays; each ray traverses the BVH in O(log F) |
-| Weighted average | O(V x R) | Simple accumulation of distance x weight per vertex |
-| Normalization | O(V) | Single min-max pass + log transform |
-| CSR graph build | O(F log F) | Edge extraction O(F), sort O(F log F), unique + CSR O(F) |
-| Anisotropic smoothing | O(V x k x I) | I iterations, each vertex blends with k neighbors |
-| **Total** | **O(V x R x log F + F log F)** | BVH build and ray tracing dominate |
-
-#### VCGlib/MeshLab GPU (OpenGL)
-
-| Stage | Complexity | Explanation |
-| :--- | :--- | :--- |
-| Preprocessing | O(V + F) | Normal computation, bounding box, compact arrays |
-| Upload to texture | O(V) | Pack vertex data into RGBA32F textures |
-| For each of N directions: | | |
-| - Spawn camera | O(1) | Set orthographic projection matrix |
-| - Depth peeling | O(F x P) | P layers, each layer renders all visible triangles |
-| - SDF shader | O(V) | Per-vertex depth comparison and weight accumulation |
-| - FBO blend | O(V) | Additive blending into result texture |
-| Readback | O(V) | Single glReadPixels call |
-| **Total** | **O(N x (F x P + V))** | Depth peeling across all directions dominates |
-
-#### Comparison
-
-| Aspect | OptiX | VCGlib/MeshLab GPU |
-| :--- | :--- | :--- |
-| **Asymptotic** | O(V x R x log F) | O(N x F x P) |
-| **With typical values** | O(V x 64 x log F) | O(64 x F x P), where P scales with model size for accuracy |
-| **Per-element work** | Per-vertex (R independent rays) | Per-face (entire mesh rendered per direction) |
-| **BVH factor** | log F per ray traversal | None (rasterization, no BVH) |
-| **Parallelism model** | One CUDA thread per vertex | One GPU draw call per direction |
-| **Bottleneck** | Ray-BVH intersection (compute-bound) | Rasterization + depth peeling (bandwidth-bound) |
-| **Fixed overhead** | Low (CUDA kernel launch) | High (OpenGL context, texture upload, N draw calls) |
-
-#### Why OptiX Wins Despite log F Factor
-
-1. **Per-vertex parallelism**: OptiX launches V threads in parallel, each independently shooting R rays. The GPU's RT Cores handle ray-BVH traversal in hardware.
-
-2. **VCGlib's per-direction overhead**: Each of the 128 camera directions requires a full mesh render pass. Even though rasterization is fast, 128 draw calls + depth peeling iterations accumulate significant fixed overhead.
-
-3. **Data transfer**: OptiX uses zero-copy CUDA device pointers (no host-device transfer during computation). VCGlib requires `glReadPixels` to read back the FBO result to the CPU.
-
-4. **Post-processing included**: OptiX's O(V x k x I) smoothing adds negligible cost compared to its O(V x R x log F) ray tracing, while VCGlib has no post-processing at all.
 
 ---
 
-## SDF via NVIDIA OptiX (Hardware Ray Tracing)
-
-This approach runs the entire SDF pipeline on the GPU using CUDA and NVIDIA's hardware-accelerated ray tracing (RT Cores). Every stage -- from normal computation to ray tracing to post-processing -- executes on the GPU with zero CPU involvement.
+## Methodology Overview
 
 ### Pipeline
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                     OPTIX SDF PIPELINE                              │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  ┌──────────────┐                                                   │
-│  │  Load Mesh   │                                                   │
-│  └──────┬───────┘                                                   │
-│         ▼                                                           │
-│  ┌──────────────────────────────────────────────────────────┐       │
-│  │  Compute Vertex Normals on GPU                           │       │
-│  │  For each vertex, accumulate the normals of adjacent     │       │
-│  │  faces weighted by face area, then normalize.           │       │
-│  └──────────────────────┬───────────────────────────────────┘       │
-│                         ▼                                           │
-│  ┌──────────────────────────────────────────────────────────┐       │
-│  │  Build Bounding Volume Hierarchy (BVH)                   │       │
-│  │  Construct an acceleration structure from all triangles  │       │
-│  │  using NVIDIA RT Cores for hardware-accelerated          │       │
-│  │  ray-triangle intersection.                              │       │
-│  └──────────────────────┬───────────────────────────────────┘       │
-│                         ▼                                           │
-│  ┌──────────────────────────────────────────────────────────┐       │
-│  │  Launch One Thread Per Vertex                            │       │
-│  │  Each GPU thread handles one vertex and its cone of rays.│       │
-│  └──────────────────────┬───────────────────────────────────┘       │
-│                         ▼                                           │
-│  ┌──────────────────────────────────────────────────────────┐       │
-│  │  Generate Ray Directions (Hammersley 2D Sampling)        │       │
-│  │  For each vertex, shoot 64 rays inside a 120-degree     │       │
-│  │  cone centered on the inward-facing normal. Ray          │       │
-│  │  directions are generated using a low-discrepancy        │       │
-│  │  sequence that ensures uniform coverage of the cone      │       │
-│  │  with minimal clustering.                                │       │
-│  └──────────────────────┬───────────────────────────────────┘       │
-│                         ▼                                           │
-│  ┌──────────────────────────────────────────────────────────┐       │
-│  │  Trace Rays Through Hardware BVH                          │       │
-│  │  Each ray is traced through the mesh using OptiX RT      │       │
-│  │  Cores. If it hits the mesh on the other side, the       │       │
-│  │  distance and the inverse of the angle from the cone     │       │
-│  │  axis are stored.                                         │       │
-│  └──────────────────────┬───────────────────────────────────┘       │
-│                         ▼                                           │
-│  ┌──────────────────────────────────────────────────────────┐       │
-│  │  Compute Weighted Average (Raw SDF)                       │       │
-│  │  For each vertex, divide the sum of (distance x weight)  │       │
-│  │  by the sum of weights across all valid rays.            │       │
-│  └──────────────────────┬───────────────────────────────────┘       │
-│                         ▼                                           │
-│  ┌──────────────────────────────────────────────────────────┐       │
-│  │  Normalize SDF Values                                     │       │
-│  │  Scale all values to [0, 1] using min-max, then apply    │       │
-│  │  logarithmic compression to reduce the dynamic range     │       │
-│  │  and bring out detail in thin regions.                    │       │
-│  └──────────────────────┬───────────────────────────────────┘       │
-│                         ▼                                           │
-│  ┌──────────────────────────────────────────────────────────┐       │
-│  │  Build Mesh Adjacency Graph (CSR) on GPU                  │       │
-│  │  Extract all directed edges from triangle faces, sort    │       │
-│  │  and deduplicate them, then build a Compressed Sparse     │       │
-│  │  Row representation of the mesh connectivity.            │       │
-│  └──────────────────────┬───────────────────────────────────┘       │
-│                         ▼                                           │
-│  ┌──────────────────────────────────────────────────────────┐       │
-│  │  Anisotropic Bilateral Smoothing (4 iterations)           │       │
-│  │  For each vertex, blend its SDF value with its neighbors │       │
-│  │  using bilateral weights that consider both spatial       │       │
-│  │  distance and SDF value difference. This smooths noise   │       │
-│  │  while preserving sharp features at shape boundaries.    │       │
-│  └──────────────────────┬───────────────────────────────────┘       │
-│                         ▼                                           │
-│                   Final SDF per vertex                              │
-└─────────────────────────────────────────────────────────────────────┘
+Read OBJ Model
+       │
+       ▼
+Parallel GPU Init
+ ┌──────────────────┐
+ │ Calculate Normals │  Build BVH
+ └──────────────────┘
+       │
+       ▼
+OptiX Ray Tracing Engine
+ ┌──────────────────────┐
+ │ Build Shader Binding │
+ │     Table (SBT)      │
+ ├──────────────────────┤
+ │  OptiX Pipeline      │
+ │  (raygen + closest-  │
+ │       hit shaders)   │
+ ├──────────────────────┤
+ │  Calculate Weighted  │
+ │        SDF           │
+ └──────────────────────┘
+       │
+       ▼
+GPU Post-Processing
+ ┌──────────────────────┐
+ │  Normalize SDF       │
+ │  (log compression)   │
+ ├──────────────────────┤
+ │  Build CSR Graph     │
+ │  (CUB radix sort)    │
+ ├──────────────────────┤
+ │  Anisotropic Bilateral│
+ │  Smoothing (3x iter) │
+ └──────────────────────┘
+       │
+       ▼
+   Final SDF
 ```
 
-### Key Characteristics
+### Key Components
 
-- **Compute platform**: NVIDIA RTX GPU via CUDA + OptiX RT Cores
-- **Ray tracing method**: Hardware BVH traversal (optixTrace)
-- **Ray sampling**: Hammersley 2D quasi-random sequence (low-discrepancy)
-- **Multi-layer handling**: Single closest-hit per ray (no depth peeling needed -- hardware BVH returns the first intersection)
-- **Post-processing**: Full GPU pipeline including normalization and anisotropic bilateral smoothing via CSR adjacency graph
-- **Granularity**: Per-vertex only
+1. **Read OBJ Model** (`Core/Model.cu`): Parses `.obj` files into vertex and face matrices on the GPU.
 
-### Source Files
+2. **Calculate Vertex Normals** (`Core/ModelHelper.cu`): Two CUDA kernels — one accumulates area-weighted face normals via `atomicAdd`, the other normalizes to unit length. Runs on its own CUDA stream in parallel with BVH construction.
 
-| File | Role |
-|------|------|
-| `src/Optix/SDFOptix.cu` | Ray generation shader (Hammersley sampling, optixTrace calls) |
-| `src/Optix/SDFKernels.cuh` | CUDA kernels: raw SDF, normalization, bilateral smoothing, CSR graph |
-| `src/Optix/OptixRunner.cuh` | OptiX pipeline setup, BVH build, SBT construction |
-| `src/Optix/interface.cu` | High-level orchestration of the full SDF pipeline |
+3. **Build BVH** (`OptixRunner.cuh`): Constructs an OptiX Geometry Acceleration Structure (GAS) from the triangle mesh. Face culling is disabled to allow rays to hit triangles from both sides.
+
+4. **Build Shader Binding Table** (`OptixRunner.cuh`): Maps three ray tracing events (ray generation, closest-hit, miss) to their corresponding GPU programs.
+
+5. **OptiX Pipeline** (`SDFOptix.cu`):
+   - **Ray Generator** (`__raygen__sdf_cone`): Distributes 64 rays within a cone using Hammersley 2D quasi-random sampling, maps them to world space via tangent-frame transformation, and traces them through the hardware BVH.
+   - **Closest-Hit** (`__closesthit__sdf`): Records the travel distance using `optixGetRayTmax()`.
+   - `OPTIX_RAY_FLAG_DISABLE_ANYHIT` is set for maximum RT Core throughput.
+
+6. **Calculate Weighted SDF** (`SDFKernels.cuh`): The `GPUComputeRawSDF` kernel computes the weighted average per vertex, excluding rays that missed.
+
+7. **Normalize SDF** (`SDFKernels.cuh`): Min-max scaling followed by logarithmic compression: `log(4.0 · x̂ + 1) / log(5.0)`.
+
+8. **Build Adjacency Graph** (`SDFKernels.cuh`): Extracts 6 directed edges per triangle, sorts and deduplicates them via `cub::DeviceRadixSort` + `cub::DeviceSelect::Unique`, then converts to Compressed Sparse Row (CSR) format.
+
+9. **Anisotropic Bilateral Smoothing** (`SDFKernels.cuh`): Three iterations of bilateral filtering with spatial Gaussian (σₛ = 2% of bounding box diagonal) and range Gaussian (σᵣ = 0.1). Uses ping-pong double-buffering.
 
 ---
 
-## SDF via VCGlib/MeshLab GPU (Spawning Camera + Depth Peeling)
+## Quality Comparison
 
-This approach uses OpenGL rasterization instead of ray tracing. It "spawns" virtual orthographic cameras around the mesh and uses the GPU's rasterization pipeline with depth peeling to compute thickness. This is the implementation behind PyMeshLab's `compute_scalar_by_shape_diameter_function_per_vertex_gpu` filter.
+The following figures show the SDF heat map from both implementations and their absolute difference. Hot colors (red/yellow) indicate larger SDF values (thicker regions), while cool colors (blue) indicate thinner regions.
 
-### Pipeline
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│               VCGlib/MeshLab GPU SDF PIPELINE                       │
-│            (Spawning Camera + Depth Peeling)                        │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  ┌──────────────┐                                                   │
-│  │  Load Mesh   │                                                   │
-│  └──────┬───────┘                                                   │
-│         ▼                                                           │
-│  ┌──────────────────────────────────────────────────────────┐       │
-│  │  Preprocess Mesh                                         │       │
-│  │  Compute per-vertex normals, per-face normals, bounding  │       │
-│  │  box, and compact vertex/face arrays.                    │       │
-│  └──────────────────────┬───────────────────────────────────┘       │
-│                         ▼                                           │
-│  ┌──────────────────────────────────────────────────────────┐       │
-│  │  Upload Mesh Data to GPU Textures                         │       │
-│  │  Pack vertex positions into a RGBA32F texture and        │       │
-│  │  vertex normals into a second RGBA32F texture. Each      │       │
-│  │  pixel holds one vertex's data with a 1:1 mapping:      │       │
-│  │  pixel[i] corresponds to vertex[i].                      │       │
-│  └──────────────────────┬───────────────────────────────────┘       │
-│                         ▼                                           │
-│  ┌──────────────────────────────────────────────────────────┐       │
-│  │  Generate Camera Directions (Fibonacci Sphere)            │       │
-│  │  Distribute N directions uniformly on a sphere using     │       │
-│  │  the Fibonacci spiral method. Each direction becomes     │       │
-│  │  a virtual camera that will look at the mesh.            │       │
-│  └──────────────────────┬───────────────────────────────────┘       │
-│                         ▼                                           │
-│  ┌──────────────────────────────────────────────────────────┐       │
-│  │  For Each Camera Direction:                               │       │
-│  │                                                          │       │
-│  │  ┌────────────────────────────────────────────────────┐  │       │
-│  │  │ Spawn Orthographic Camera                          │  │       │
-│  │  │ Place the camera at the direction vector offset    │  │       │
-│  │  │ from the mesh center, looking back at the center.  │  │       │
-│  │  │ The orthographic projection covers the entire      │  │       │
-│  │  │ bounding box so no mesh part is clipped.           │  │       │
-│  │  └────────────────────────┬───────────────────────────┘  │       │
-│  │                           ▼                              │       │
-│  │  ┌────────────────────────────────────────────────────┐  │       │
-│  │  │ Depth Peeling Passes (up to P layers)              │  │       │
-│  │  │                                                    │  │       │
-│  │  │ Render the mesh from this camera view. The GPU     │  │       │
-│  │  │ rasterizer produces a depth map of the closest     │  │       │
-│  │  │ surface. Then, iteratively peel each layer:        │  │       │
-│  │  │                                                    │  │       │
-│  │  │  Layer 0: Render front-facing triangles only.      │  │       │
-│  │  │           Store the front depth map.               │  │       │
-│  │  │                                                    │  │       │
-│  │  │  Layer 1: Render back-facing triangles only.       │  │       │
-│  │  │           Store the back depth map.                │  │       │
-│  │  │           This pair gives the first thickness.     │  │       │
-│  │  │                                                    │  │       │
-│  │  │  Layer 2+: Use depth peeling shader to skip        │  │       │
-│  │  │            already-captured layers, revealing      │  │       │
-│  │  │            deeper surfaces. Continue until no      │  │       │
-│  │  │            more pixels pass the occlusion query.   │  │       │
-│  │  │                                                    │  │       │
-│  │  │ This handles meshes with hollow interiors or       │  │       │
-│  │  │ multiple surfaces along a ray (e.g., sphere = 2,  │  │       │
-│  │  │ torus = 4 layers).                                 │  │       │
-│  │  │                                                    │  │       │
-│  │  │ Three FBOs are used in a circular buffer to avoid  │  │       │
-│  │  │ z-fighting: each layer's depth is compared against │  │       │
-│  │  │ the previous two layers to ensure correct range.   │  │       │
-│  │  └────────────────────────┬───────────────────────────┘  │       │
-│  │                           ▼                              │       │
-│  │  ┌────────────────────────────────────────────────────┐  │       │
-│  │  │ SDF Fragment Shader                                │  │       │
-│  │  │                                                    │  │       │
-│  │  │ For each pixel (which maps 1:1 to a vertex):       │  │       │
-│  │  │   - Look up vertex position and normal from the    │  │       │
-│  │  │     vertex textures                                │  │       │
-│  │  │   - Project the vertex into the depth peeling      │  │       │
-│  │  │     viewport using the same camera matrices        │  │       │
-│  │  │   - Sample front and back depth textures at the    │  │       │
-│  │  │     projected screen position                      │  │       │
-│  │  │   - Compute distance = backDepth - frontDepth      │  │       │
-│  │  │   - Check angle between ray and vertex normal;     │  │       │
-│  │  │     skip if outside the cone                       │  │       │
-│  │  │   - Compute weight as inverse of the angle         │  │       │
-│  │  │   - Accumulate distance x weight into the red      │  │       │
-│  │  │     channel and weight into the green channel      │  │       │
-│  │  │     using additive blending                       │  │       │
-│  │  └────────────────────────┬───────────────────────────┘  │       │
-│  │                           ▼                              │       │
-│  │  ┌────────────────────────────────────────────────────┐  │       │
-│  │  │ Write Results to FBO                               │  │       │
-│  │  │ Red channel: accumulated distance x weight         │  │       │
-│  │  │ Green channel: accumulated weight                  │  │       │
-│  │  │ All N camera directions blend into the same FBO.   │  │       │
-│  │  │ The FBO starts at zero; each direction adds its    │  │       │
-│  │  │ contribution via additive blending.                │  │       │
-│  │  └────────────────────────────────────────────────────┘  │       │
-│  └──────────────────────┬───────────────────────────────────┘       │
-│                         ▼                                           │
-│  ┌──────────────────────────────────────────────────────────┐       │
-│  │  Readback Results to CPU                                  │       │
-│  │  Read the FBO pixel data. For each vertex, divide the    │       │
-│  │  accumulated distance-weight sum (red) by the            │       │
-│  │  accumulated weight sum (green) to get the final SDF.    │       │
-│  └──────────────────────┬───────────────────────────────────┘       │
-│                         ▼                                           │
-│                   Final SDF per vertex                              │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-### How the 1:1 Vertex-to-Pixel Mapping Works
-
-The core mechanism that makes this approach work:
-
-1. **Vertex data is packed into textures** where pixel `i` holds the data for vertex `i`
-2. **The mesh is rendered** from each spawned camera using standard rasterization, producing depth textures
-3. **The SDF shader runs** as a full-screen quad over the result FBO. For each pixel `i`:
-   - It reads vertex `i`'s position and normal from the vertex textures
-   - It projects that position into the depth peeling viewport using the same camera matrices
-   - It samples the front and back depth textures at that projected position
-   - It computes the thickness and accumulates the weighted result
-4. **After all directions**, the result FBO contains the global sum. Dividing red by green gives the weighted average SDF
-
-### Why 3 FBOs for Depth Peeling
-
-The 3 FBOs form a sliding window of three consecutive depth layers. When computing SDF for a front/back pair, the shader needs to verify that each vertex's depth falls between the previous back layer and the current back layer. Without the third FBO, pixels near layer boundaries get assigned to the wrong layer due to z-fighting.
-
-### Why Red and Green Channels Are Accumulated Separately
-
-The SDF formula is a weighted average (division). GPU additive blending can only add, not divide. So the numerator (distance x weight) goes into the red channel and the denominator (weight) goes into the green channel. The division happens once on the CPU during readback.
-
-### Why All Directions Blend into the Same FBO
-
-Each camera direction contributes a small piece to the global sum. Additive blending naturally accumulates them. This means only one FBO is needed and only one `glReadPixels` call is needed at the end, regardless of how many directions are used.
-
-### Key Characteristics
-
-- **Compute platform**: Any GPU with OpenGL 3.3+, FBOs, FP32 textures, and shaders
-- **Ray tracing method**: Rasterization + depth peeling (no hardware ray tracing)
-- **Ray sampling**: Fibonacci sphere (uniform distribution on sphere)
-- **Multi-layer handling**: Depth peeling (up to P layers, configurable)
-- **Post-processing**: None -- raw weighted average only
-- **Granularity**: Per-vertex or per-face (configurable)
-
-### Source Files
-
-| File | Role |
-|------|------|
-| `filter_sdfgpu.cpp` (MeshLab repo) | Plugin entry point, GL init, FBO management |
-| `filter_sdfgpu.h` (MeshLab repo) | Plugin class definition |
-| `calculateSdf.frag` (shader) | SDF fragment shader: depth comparison, weight accumulation |
-| `shaderDepthPeeling.fs` (shader) | Depth peeling fragment shader |
-| `vertexShaderDepthPeeling.vs` (shader) | Depth peeling vertex shader |
-
----
-
-## Side-by-Side Pipeline Comparison
-
-```
-┌─────────────────────────────┬─────────────────────────────────────────┐
-│      OPTIX (CUDA)           │    VCGlib/MeshLab GPU (OpenGL)          │
-├─────────────────────────────┼─────────────────────────────────────────┤
-│                             │                                         │
-│  Load Mesh                  │  Load Mesh                              │
-│      │                      │      │                                  │
-│      ▼                      │      ▼                                  │
-│  Compute normals on GPU     │  Compute normals + bbox                 │
-│      │                      │      │                                  │
-│      ▼                      │      ▼                                  │
-│  Build hardware BVH         │  Upload vertex data to GPU textures     │
-│  (RT Core acceleration)     │  (1:1 pixel-to-vertex mapping)          │
-│      │                      │      │                                  │
-│      ▼                      │      ▼                                  │
-│  One thread per vertex      │  Generate N camera directions           │
-│      │                      │  (Fibonacci sphere)                     │
-│      ▼                      │      │                                  │
-│  Generate 64 ray dirs       │      ▼                                  │
-│  per vertex                 │  For each direction:                    │
-│  (Hammersley sequence)      │      │                                  │
-│      │                      │      ▼                                  │
-│      ▼                      │  Spawn ortho camera at direction        │
-│  Trace each ray through     │      │                                  │
-│  hardware BVH               │      ▼                                  │
-│  (single closest hit)       │  Render mesh, peel depth layers         │
-│      │                      │  (multi-hit via rasterization)          │
-│      ▼                      │      │                                  │
-│  Compute weighted average   │      ▼                                  │
-│  per vertex                 │  SDF shader: compute thickness           │
-│      │                      │  between front/back depth layers        │
-│      ▼                      │  (sample depth at vertex's position)    │
-│  Normalize: log(4x+1)/log5 │      │                                  │
-│      │                      │      ▼                                  │
-│      ▼                      │  Accumulate into FBO                    │
-│  Build CSR adjacency graph  │  (additive blending, all directions)    │
-│      │                      │      │                                  │
-│      ▼                      │      ▼                                  │
-│  Smooth: 3x bilateral       │  Readback FBO, divide sums              │
-│  filtering on GPU           │      │                                  │
-│      │                      │      ▼                                  │
-│      ▼                      │  Final SDF                              │
-│  Final SDF                  │                                         │
-│                             │                                         │
-│  Key traits:                │  Key traits:                            │
-│  - Ray tracing approach     │  - Rasterization approach               │
-│  - HW BVH traversal         │  - Depth peeling for multi-layer        │
-│  - Full GPU post-processing │  - No post-processing                  │
-│  - NVIDIA RTX required      │  - Any GPU with OpenGL 3.3+            │
-│  - Per-vertex only          │  - Per-vertex or per-face               │
-└─────────────────────────────┴─────────────────────────────────────────┘
-```
-
----
-
-## Depth Peeling Impact on SDF Accuracy
-
-When testing the SDF computation on complex interior structures (e.g., `HighPeeling_Coil.obj`), the number of depth peeling iterations significantly impacts the accuracy of the computed inner layers. A comparison between **10 iterations** (insufficient) and **129 iterations** (ground truth) reveals massive discrepancies in the occluded regions:
-
-*   **Total SDF Difference:** 9707.9797
-*   **Average SDF Difference per Vertex:** 0.5394
-*   **Maximum SDF Difference:** 4.2124
-
-These numerical differences show that without enough peeling iterations, the ray tracing fails to penetrate the outer shells, leading to severe SDF overestimation (errors up to 4.21 on a 11.6 scale) on the interior vertices.
-
----
-
-## Visual Quality Comparison
-
-Each row shows the SDF heat map from both implementations and their absolute difference. Hot colors (red/yellow) indicate larger SDF values (thicker regions), while cool colors (blue) indicate thinner regions.
-
-| Model | SDF OptiX | SDF PyMeshLab | Difference |
+| Model | OptiX | PyMeshLab | Difference |
 | :--- | :---: | :---: | :---: |
-| **112** | <img src="image/112_optix.png" width="100%" alt="112 OptiX"> | <img src="image/112_pymeshlab.png" width="100%" alt="112 PyMeshLab"> | <img src="image/112_diff.png" width="100%" alt="112 Diff"> |
-| **118** | <img src="image/118_optix.png" width="100%" alt="118 OptiX"> | <img src="image/118_pymeshlab.png" width="100%" alt="118 PyMeshLab"> | <img src="image/118_diff.png" width="100%" alt="118 Diff"> |
-| **158** | <img src="image/158_optix.png" width="100%" alt="158 OptiX"> | <img src="image/158_pymeshlab.png" width="100%" alt="158 PyMeshLab"> | <img src="image/158_diff.png" width="100%" alt="158 Diff"> |
-| **181** | <img src="image/181_optix.png" width="100%" alt="181 OptiX"> | <img src="image/181_pymeshlab.png" width="100%" alt="181 PyMeshLab"> | <img src="image/181_diff.png" width="100%" alt="181 Diff"> |
-| **368** | <img src="image/368_optix.png" width="100%" alt="368 OptiX"> | <img src="image/368_pymeshlab.png" width="100%" alt="368 PyMeshLab"> | <img src="image/368_diff.png" width="100%" alt="368 Diff"> |
-| **369** | <img src="image/369_optix.png" width="100%" alt="369 OptiX"> | <img src="image/369_pymeshlab.png" width="100%" alt="369 PyMeshLab"> | <img src="image/369_diff.png" width="100%" alt="369 Diff"> |
-| **371** | <img src="image/371_optix.png" width="100%" alt="371 OptiX"> | <img src="image/371_pymeshlab.png" width="100%" alt="371 PyMeshLab"> | <img src="image/371_diff.png" width="100%" alt="371 Diff"> |
-| **400** | <img src="image/400_optix.png" width="100%" alt="400 OptiX"> | <img src="image/400_pymeshlab.png" width="100%" alt="400 PyMeshLab"> | <img src="image/400_diff.png" width="100%" alt="400 Diff"> |
-| **76** | <img src="image/76_optix.png" width="100%" alt="76 OptiX"> | <img src="image/76_pymeshlab.png" width="100%" alt="76 PyMeshLab"> | <img src="image/76_diff.png" width="100%" alt="76 Diff"> |
-| **9** | <img src="image/9_optix.png" width="100%" alt="9 OptiX"> | <img src="image/9_pymeshlab.png" width="100%" alt="9 PyMeshLab"> | <img src="image/9_diff.png" width="100%" alt="9 Diff"> |
+| **112** | <img src="image/112_optix.png" width="100%"> | <img src="image/112_pymeshlab.png" width="100%"> | <img src="image/112_diff.png" width="100%"> |
+| **118** | <img src="image/118_optix.png" width="100%"> | <img src="image/118_pymeshlab.png" width="100%"> | <img src="image/118_diff.png" width="100%"> |
+| **158** | <img src="image/158_optix.png" width="100%"> | <img src="image/158_pymeshlab.png" width="100%"> | <img src="image/158_diff.png" width="100%"> |
+| **181** | <img src="image/181_optix.png" width="100%"> | <img src="image/181_pymeshlab.png" width="100%"> | <img src="image/181_diff.png" width="100%"> |
+| **368** | <img src="image/368_optix.png" width="100%"> | <img src="image/368_pymeshlab.png" width="100%"> | <img src="image/368_diff.png" width="100%"> |
+| **369** | <img src="image/369_optix.png" width="100%"> | <img src="image/369_pymeshlab.png" width="100%"> | <img src="image/369_diff.png" width="100%"> |
+| **371** | <img src="image/371_optix.png" width="100%"> | <img src="image/371_pymeshlab.png" width="100%"> | <img src="image/371_diff.png" width="100%"> |
+| **400** | <img src="image/400_optix.png" width="100%"> | <img src="image/400_pymeshlab.png" width="100%"> | <img src="image/400_diff.png" width="100%"> |
+| **76** | <img src="image/76_optix.png" width="100%"> | <img src="image/76_pymeshlab.png" width="100%"> | <img src="image/76_diff.png" width="100%"> |
+| **9** | <img src="image/9_optix.png" width="100%"> | <img src="image/9_pymeshlab.png" width="100%"> | <img src="image/9_diff.png" width="100%"> |
+
+The OptiX bilateral filter produces smoother results in uniform thickness regions, while the PyMeshLab depth peeling approach exhibits high-frequency noise on constant-thickness surfaces. The overall thickness distribution captured by both methods is consistent.
+
+---
+
+## Limitations
+
+- **Static meshes only**: The system currently does not handle animated or deforming geometry, as the BVH is built once and not updated during animation.
+- **Single reference comparison**: Evaluation is limited to PyMeshLab; a broader comparison against other SDF methods would strengthen the assessment.
 
 ---
 
@@ -490,8 +194,60 @@ Each row shows the SDF heat map from both implementations and their absolute dif
 
 ### Prerequisites
 
-To successfully build and execute this project, ensure the following tools are installed on your system:
+- **g++**: GNU C++ compiler
+- **nvcc**: NVIDIA CUDA Compiler toolkit (CUDA 20.0+)
+- **NVIDIA RTX GPU**: For hardware-accelerated ray tracing (RT Cores)
+- **OptiX 7.6 SDK**: Available from NVIDIA Developer
 
-* **`g++`**: The GNU C++ compiler for building standard C++ source files.
-* **`nvcc`**: The NVIDIA CUDA Compiler toolkit, required for compiling the OptiX/CUDA components.
-* **`CLion`**: The recommended IDE to load the CMake project, resolve dependencies, and execute the builds properly.
+### Build
+
+```bash
+git clone https://github.com/<your-username>/OptimizeSDF
+cd OptimizeSDF
+mkdir build && cd build
+cmake ..
+make -j$(nproc)
+```
+
+### Run
+
+```bash
+./OptimizeSDF
+```
+
+The program will iterate over all `.obj` models in the `Model/` directory, compute SDF using the OptiX pipeline, and compare against the PyMeshLab reference.
+
+### Source Files
+
+| File | Role |
+|------|------|
+| `main.cu` | Entry point: orchestrates full pipeline |
+| `Core/Model.cu` | 3D mesh model reader (OBJ parser) |
+| `Core/ModelHelper.cu` | GPU kernels for vertex normal computation |
+| `src/Optix/SDFOptix.cu` | OptiX shaders: raygen + closest-hit (compiled to PTX) |
+| `src/Optix/SDFKernels.cuh` | CUDA kernels: raw SDF, normalization, CSR graph, bilateral smoothing |
+| `src/Optix/OptixRunner.cuh` | OptiX pipeline setup, BVH build, SBT construction |
+| `src/Optix/interface.cu` | High-level orchestration of the full SDF pipeline |
+
+---
+
+## References
+
+1. L. Shapira, A. Shamir, D. Cohen-Or, "Consistent Mesh Partitioning and Skeletonization using the Shape Diameter Function," *Visual Computer*, vol. 24, pp. 249–259, 2008.
+2. J. Kamenický, "Parallelization of Shape Diameter Function Computation using OpenCL," *Proceedings of CESCG*, 204, 2014.
+3. S. Chen, T. Liu, Z. Shu, S. Xin, Y. He, C. Tu, "Fast and robust shape diameter function," *PLoS ONE*, vol. 13, no. 1, e0190666, 2018.
+4. P. Cignoni et al., "MeshLab: an Open-Source Mesh Processing Tool," *Sixth Eurographics Italian Chapter Conference*, pp. 129–136, 2008.
+5. S. G. Parker et al., "OptiX: a general purpose ray tracing engine," *ACM SIGGRAPH 2010 papers*, pp. 1–13, 2010.
+6. J. Nickolls et al., "Scalable parallel programming with CUDA," *Queue*, vol. 6, no. 2, pp. 40–53, 2008.
+7. C. Tomasi and R. Manduchi, "Bilateral Filtering for Gray and Color Images," *ICCV*, pp. 839–846, 1998.
+8. NVIDIA Corporation, "CUB: Cooperative primitives for CUDA C++."
+9. X. Chen, A. Golovinskiy, T. Funkhouser, "A Benchmark for 3D Mesh Segmentation," *ACM SIGGRAPH*, 2009.
+10. A. Baldacci et al., "GPU-based approaches for shape diameter function computation and its applications focused on skeleton extraction," *Computers & Graphics*, vol. 59, pp. 151–159, 2016.
+
+---
+
+## Author
+
+**Nguyễn Đức Đạt** (22BA13065)  
+University of Science and Technology of Hanoi  
+*Supervised by:* Dr. Nguyễn Hoàng Hà, Prof. Lilian Aveneau

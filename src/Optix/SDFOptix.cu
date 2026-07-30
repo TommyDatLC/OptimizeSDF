@@ -31,7 +31,7 @@ extern "C" __global__ void __raygen__sdf_cone() {
     float3 bitangent = cross(invertedNormal, tangent);
 
     int rayLimit = (params.raysPerPoint > MAX_RAYS) ? MAX_RAYS : params.raysPerPoint;
-    float cosThetaMax = cosf(params.coneAngleRad / 2.0f);
+    float cosThetaMax = cosf(params.coneAngleRad);
 
     int validCount = 0;
     int baseIdx = idx.x * rayLimit;
