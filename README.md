@@ -14,13 +14,13 @@ Unlike the traditional approach of casting rays on a CPU, our method uses **hard
 
 Introduced by Shapira et al. [1], the SDF is a per-vertex scalar measure that captures the local "thickness" of a 3D model at any point on its surface. Conceptually, consider a point **p** on the mesh surface. If one looks along the inward normal direction **−n⃗**, the SDF quantifies how far one must travel before exiting the opposite side of the object.
 
-However, a single ray along the inward normal may yield unreliable results on bumpy or irregular interior surfaces. To address this, the SDF casts a cone of **R rays** (typically R = 64) from point **p**, directed toward the interior of the model. Each ray records its travel distance **dᵢ** to the opposite wall, and the final SDF value is computed as a weighted average:
+However, a single ray along the inward normal may yield unreliable results on bumpy or irregular interior surfaces. To address this, the SDF casts a cone of **R rays** (typically $R = 64$) from point **p**, directed toward the interior of the model. Each ray records its travel distance $d_i$ to the opposite wall, and the final SDF value is computed as a weighted average:
 
-```
-SDF(p) = Σ(dᵢ × wᵢ) / Σ(wᵢ)
-```
+$$
+\text{SDF}(p) = \frac{\sum (d_i \times w_i)}{\sum w_i}
+$$
 
-where **wᵢ = 1/θᵢ** is the weight inversely proportional to the angle between the ray and the cone axis.
+where $w_i = \frac{1}{\theta_i}$ is the weight inversely proportional to the angle between the ray and the cone axis.
 
 <p align="center">
   <img src="image/112_optix.png" width="400" alt="SDF heatmap example">
@@ -130,7 +130,10 @@ The pipeline begins by loading raw 3D mesh data from Wavefront `.obj` files ([`M
 
 1. **Index Conversion**: OBJ files use 1-based indexing. The parser converts indices to 0-based to align with GPU memory indexing.
 2. **Matrix Upload**: Vertex positions and face connectivity indices are packed into host matrices and uploaded to GPU memory via `CopyToDevice()`:
-   $$\mathbf{V} = \begin{bmatrix} x_0 & y_0 & z_0 \\ x_1 & y_1 & z_1 \\ \vdots & \vdots & \vdots \end{bmatrix}_{|V| \times 3}, \qquad \mathbf{F} = \begin{bmatrix} v_0^0 & v_1^0 & v_2^0 \\ v_0^1 & v_1^1 & v_2^1 \\ \vdots & \vdots & \vdots \end{bmatrix}_{|F| \times 3}$$
+
+$$
+\mathbf{V} = \begin{bmatrix} x_0 & y_0 & z_0 \\ x_1 & y_1 & z_1 \\ \vdots & \vdots & \vdots \end{bmatrix}_{|V| \times 3}, \qquad \mathbf{F} = \begin{bmatrix} v_0^0 & v_1^0 & v_2^0 \\ v_0^1 & v_1^1 & v_2^1 \\ \vdots & \vdots & \vdots \end{bmatrix}_{|F| \times 3}
+$$
 
 ---
 
@@ -143,12 +146,23 @@ Vertex normals define inward directions for interior ray tracing. They are compu
 
 1. **Area-Weighted Face Normal Accumulation** (`GPUNormalCaculation`):  
    For a triangle with vertices $\mathbf{v}_0, \mathbf{v}_1, \mathbf{v}_2$, the unnormalized face normal $\vec{n}_f$ is the cross product of its edge vectors $\vec{e}_1 = \mathbf{v}_1 - \mathbf{v}_0$ and $\vec{e}_2 = \mathbf{v}_2 - \mathbf{v}_0$:
-   $$\vec{n}_f = \vec{e}_1 \times \vec{e}_2$$
+
+   $$
+   \vec{n}_f = \vec{e}_1 \times \vec{e}_2
+   $$
+
    The magnitude $|\vec{n}_f|$ equals twice the triangle area, naturally weighting larger faces heavier. CUDA atomic addition (`atomicAdd`) safely accumulates face normals into adjacent vertices across concurrent threads:
-   $$\vec{N}_{v_j} = \sum_{f \in \mathcal{F}(v_j)} \vec{n}_f$$
+
+   $$
+   \vec{N}_{v_j} = \sum_{f \in \mathcal{F}(v_j)} \vec{n}_f
+   $$
+
 2. **Unit Normalization** (`GPUNormalizeVertexNormal`):  
    Accumulated vectors are normalized to unit length:
-   $$\hat{\mathbf{n}}_v = \begin{cases} \frac{\vec{N}_v}{|\vec{N}_v|} & \text{if } |\vec{N}_v| > 0 \\ (0, 0, 1)^T & \text{otherwise} \end{cases}$$
+
+   $$
+   \hat{\mathbf{n}}_v = \begin{cases} \frac{\vec{N}_v}{|\vec{N}_v|} & \text{if } |\vec{N}_v| > 0 \\ (0, 0, 1)^T & \text{otherwise} \end{cases}
+   $$
 
 #### 2.2 Build BVH Acceleration Structure ([`OptixRunner.cuh`](file:///e:/Code/FinalProject/src/Optix/OptixRunner.cuh))
 To enable real-time ray traversal across millions of triangles, an OptiX Bounding Volume Hierarchy (BVH) Geometry Acceleration Structure (GAS) is built via `optixAccelBuild`:
@@ -170,14 +184,27 @@ The OptiX pipeline executes the core physics simulation by launching 64 rays per
 
 1. **Local Tangent Frame**: An orthonormal coordinate basis $(\mathbf{T}, \mathbf{B}, -\hat{\mathbf{n}}_v)$ is generated around the inward normal using the Frisvad method.
 2. **Hammersley 2D Low-Discrepancy Sampling**: Ray directions inside a cone aperture of $\theta_{\text{max}} = 150^\circ$ ($2.61799\text{ rad}$) are generated using the base-2 Van der Corput sequence $\Phi_2(i)$:
-   $$x_i = \frac{i}{R}, \quad y_i = \Phi_2(i) = \sum_{k=0}^{\lfloor \log_2 i \rfloor} b_k \cdot 2^{-(k+1)}, \quad \text{for } i \in \{0, \dots, 63\}$$
-   $$\theta_i = x_i \cdot \frac{\theta_{\text{max}}}{2}, \quad \phi_i = 2\pi y_i$$
-   $$\mathbf{d}_{\text{world}} = (\sin\theta_i \cos\phi_i) \mathbf{T} + (\sin\theta_i \sin\phi_i) \mathbf{B} + (\cos\theta_i) (-\hat{\mathbf{n}}_v)$$
+
+   $$
+   x_i = \frac{i}{R}, \quad y_i = \Phi_2(i) = \sum_{k=0}^{\lfloor \log_2 i \rfloor} b_k \cdot 2^{-(k+1)}, \quad \text{for } i \in \{0, \dots, 63\}
+   $$
+
+   $$
+   \theta_i = x_i \cdot \frac{\theta_{\text{max}}}{2}, \quad \phi_i = 2\pi y_i
+   $$
+
+   $$
+   \mathbf{d}_{\text{world}} = (\sin\theta_i \cos\phi_i) \mathbf{T} + (\sin\theta_i \sin\phi_i) \mathbf{B} + (\cos\theta_i) (-\hat{\mathbf{n}}_v)
+   $$
+
 3. **Hardware BVH Traversal & Payload**: `optixTrace` queries RT Cores. The closest-hit program `__closesthit__sdf` records distance $d_i = \text{optixGetRayTmax()}$ into a 32-bit payload. Any-Hit programs are disabled (`OPTIX_RAY_FLAG_DISABLE_ANYHIT`) for peak hardware throughput.
 
 #### 3.3 Calculate Weighted Raw SDF ([`SDFKernels.cuh`](file:///e:/Code/FinalProject/src/Optix/SDFKernels.cuh))
 The `GPUComputeRawSDF` kernel aggregates valid ray travel distances using an angle-weighted average, where weight $w_i = \frac{1}{\theta_i + \epsilon}$ penalizes wide-angle deflections:
-$$\text{SDF}_{\text{raw}}(p) = \frac{\sum_{i=1}^{R_{\text{hit}}} d_i \cdot w_i}{\sum_{i=1}^{R_{\text{hit}}} w_i}$$
+
+$$
+\text{SDF}_{\text{raw}}(p) = \frac{\sum_{i=1}^{R_{\text{hit}}} d_i \cdot w_i}{\sum_{i=1}^{R_{\text{hit}}} w_i}
+$$
 
 ---
 
@@ -187,9 +214,16 @@ To transform raw distances into a smooth heat map, the pipeline runs normalizati
 
 #### 4.1 Normalize SDF ([`SDFKernels.cuh`](file:///e:/Code/FinalProject/src/Optix/SDFKernels.cuh))
 1. **Min-Max Scaling**: `GPUComputeSDFMinMax` finds minimum ($\text{SDF}_{\min}$) and maximum ($\text{SDF}_{\max}$) values to scale raw distances to $[0, 1]$:
-   $$\hat{v} = \frac{\text{SDF}_{\text{raw}}(p) - \text{SDF}_{\min}}{\text{SDF}_{\max} - \text{SDF}_{\min}}$$
+
+   $$
+   \hat{v} = \frac{\text{SDF}_{\text{raw}}(p) - \text{SDF}_{\min}}{\text{SDF}_{\max} - \text{SDF}_{\min}}
+   $$
+
 2. **Logarithmic Compression**: `GPUApplySDFNormalization` compresses dynamic range with parameter $\alpha = 4.0$ to preserve fine details on thin geometry:
-   $$v_{\text{norm}} = \frac{\ln(4.0 \cdot \hat{v} + 1.0)}{\ln(5.0)}$$
+
+   $$
+   v_{\text{norm}} = \frac{\ln(4.0 \cdot \hat{v} + 1.0)}{\ln(5.0)}
+   $$
 
 #### 4.2 Build Adjacency Graph in CSR Format ([`SDFKernels.cuh`](file:///e:/Code/FinalProject/src/Optix/SDFKernels.cuh))
 To enable 1-ring neighbor lookups without $O(|V|^2)$ memory overhead, mesh topology is packed into Compressed Sparse Row (CSR) format:
@@ -200,7 +234,10 @@ To enable 1-ring neighbor lookups without $O(|V|^2)$ memory overhead, mesh topol
 
 #### 4.3 Anisotropic Bilateral Smoothing ([`SDFKernels.cuh`](file:///e:/Code/FinalProject/src/Optix/SDFKernels.cuh))
 The `AnisotropicSmoothingKernel` runs 3 iterations of bilateral filtering over the CSR 1-ring neighbor graph $\mathcal{N}(p)$ to eliminate high-frequency ray noise while preserving sharp feature boundaries:
-$$v_p^{(k+1)} = \frac{\sum_{q \in \mathcal{N}(p)} \exp\left(-\frac{\|\mathbf{x}_p - \mathbf{x}_q\|^2}{2\sigma_s^2}\right) \exp\left(-\frac{(v_p^{(k)} - v_q^{(k)})^2}{2\sigma_r^2}\right) v_q^{(k)}}{\sum_{q \in \mathcal{N}(p)} \exp\left(-\frac{\|\mathbf{x}_p - \mathbf{x}_q\|^2}{2\sigma_s^2}\right) \exp\left(-\frac{(v_p^{(k)} - v_q^{(k)})^2}{2\sigma_r^2}\right)}$$
+
+$$
+v_p^{(k+1)} = \frac{\sum_{q \in \mathcal{N}(p)} \exp\left(-\frac{\|\mathbf{x}_p - \mathbf{x}_q\|^2}{2\sigma_s^2}\right) \exp\left(-\frac{(v_p^{(k)} - v_q^{(k)})^2}{2\sigma_r^2}\right) v_q^{(k)}}{\sum_{q \in \mathcal{N}(p)} \exp\left(-\frac{\|\mathbf{x}_p - \mathbf{x}_q\|^2}{2\sigma_s^2}\right) \exp\left(-\frac{(v_p^{(k)} - v_q^{(k)})^2}{2\sigma_r^2}\right)}
+$$
 - **Spatial Gaussian**: $\sigma_s = 0.02 \cdot \text{diag}(\text{BoundingBox})$.
 - **Range Gaussian**: $\sigma_r = 0.1$.
 - **Ping-Pong Double Buffering**: Swaps input/output pointers (`d_sdfBuf1` $\leftrightarrow$ `d_sdfBuf2`) across iterations to prevent GPU memory race conditions.
