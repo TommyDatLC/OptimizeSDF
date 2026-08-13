@@ -1,10 +1,10 @@
 # Optimizing Shape Diameter Function using High Performance Computing
 
-![USTH](https://img.shields.io/badge/USTH-Final%20Thesis-blue)
+![USTH](https://img.shields.io/badge/USTH-Final%20Project-blue)
 ![CUDA](https://img.shields.io/badge/CUDA-20.0-green)
 ![OptiX](https://img.shields.io/badge/OptiX-7.6-orange)
 
-This thesis presents a **GPU-accelerated Shape Diameter Function (SDF) computation system** using NVIDIA OptiX. SDF assigns a scalar value to each vertex of a 3D mesh representing the local thickness of the model at that point — a fundamental geometric descriptor widely used in shape analysis, segmentation, and parameterization.
+This project presents a **GPU-accelerated Shape Diameter Function (SDF) computation system** using NVIDIA OptiX. SDF assigns a scalar value to each vertex of a 3D mesh representing the local thickness of the model at that point — a fundamental geometric descriptor widely used in shape analysis, segmentation, and parameterization.
 
 Unlike the traditional approach of casting rays on a CPU, our method uses **hardware-accelerated ray tracing (RT Cores)** to achieve speedups of **61.3x to 356.2x** over the PyMeshLab GPU reference implementation, while producing comparable output quality.
 
@@ -39,20 +39,6 @@ Understanding an object's thickness provides essential geometric cues for:
 - **Skeletonization**: Finding the "bones" inside a 3D character by tracing the thickest parts
 - **Shape matching and retrieval**: Identifying similar shapes across databases using thickness-based signatures that are pose-oblivious
 - **Character animation**: Rigging and skinning by understanding volumetric properties
-
----
-
-## Thesis Structure
-
-This repository contains the full implementation for the following thesis chapters:
-
-| Chapter | Description |
-|---------|-------------|
-| **1. Introduction** | SDF definition, context, survey of existing work, objectives |
-| **2. Materials and Technologies** | Dataset, CUDA, NVIDIA CUB, NVIDIA OptiX |
-| **3. Methodology** | Pipeline: OBJ loading → normals → BVH → ray tracing → post-processing |
-| **4. Experiment Results** | Performance benchmarks, quality comparison, quality analysis |
-| **5. Conclusion** | Limitations, conclusion, future work |
 
 ---
 
@@ -92,7 +78,7 @@ This repository contains the full implementation for the following thesis chapte
 
 ## Methodology & Algorithmic Foundations
 
-The Shape Diameter Function (SDF) pipeline transforms raw 3D polygon meshes into smooth, surface-aligned volumetric thickness values using NVIDIA OptiX. As detailed in Chapter 3 of the thesis report, the overall workflow is organized into four main phases: **Read OBJ Model**, **Parallel GPU Initialization**, **OptiX Ray Tracing Engine**, and **GPU Post-Processing**.
+The Shape Diameter Function (SDF) pipeline transforms raw 3D polygon meshes into smooth, surface-aligned volumetric thickness values using NVIDIA OptiX. As detailed in Chapter 3 of the project report, the overall workflow is organized into four main phases: **Read OBJ Model**, **Parallel GPU Initialization**, **OptiX Ray Tracing Engine**, and **GPU Post-Processing**.
 
 ```mermaid
 flowchart TD
@@ -259,21 +245,6 @@ $$
 - **Spatial Gaussian**: $\sigma_s = 0.02 \cdot \text{diag}(\text{BoundingBox})$.
 - **Range Gaussian**: $\sigma_r = 0.1$.
 - **Ping-Pong Double Buffering**: Swaps input/output pointers (`d_sdfBuf1` $\leftrightarrow$ `d_sdfBuf2`) across iterations to prevent GPU memory race conditions.
-
----
-
-### Source File Responsibilities Matrix
-
-| Layer | File / Module | Key Functions & Responsibilities |
-| :--- | :--- | :--- |
-| **Entry & Orchestration** | [`main.cu`](file:///e:/Code/FinalProject/main.cu) | Program entry point, command-line parsing (`--preview`), directory scanning, Polyscope 3D visualizer integration, benchmark logging. |
-| **Pipeline Interface** | [`interface.cu`](file:///e:/Code/FinalProject/src/Optix/interface.cu) | `CaculatingSDFUsingOptix()` pipeline orchestrator, stream synchronization, host-device allocations. |
-| **OptiX Pipeline Engine** | [`OptixRunner.cuh`](file:///e:/Code/FinalProject/src/Optix/OptixRunner.cuh) | OptiX context initialization, GAS BVH construction, Shader Binding Table (SBT) build, `optixLaunch` invocation. |
-| **OptiX Ray Tracing Shaders** | [`SDFOptix.cu`](file:///e:/Code/FinalProject/src/Optix/SDFOptix.cu) | Device PTX shaders: `__raygen__sdf_cone` (64 Hammersley rays inside tangent frame), `__closesthit__sdf` (distance recording). |
-| **CUDA Post-Processing** | [`SDFKernels.cuh`](file:///e:/Code/FinalProject/src/Optix/SDFKernels.cuh) | `GPUComputeRawSDF`, log compression kernel, CUB CSR graph creation (`cub::DeviceRadixSort`), ping-pong bilateral smoothing. |
-| **Geometry & Normal Utility** | [`ModelHelper.cu`](file:///e:/Code/FinalProject/Core/ModelHelper.cu) | Parallel face normal accumulation (`atomicAdd`) and unit normalization kernels. |
-| **3D Mesh Data Model** | [`Model.cu`](file:///e:/Code/FinalProject/Core/Model.cu) | Wavefront `.obj` mesh reader, vertex/face memory management, Polyscope scene registration. |
-| **Device Memory Manager** | [`MatrixMemoryManager.cu`](file:///e:/Code/FinalProject/Core/MatrixMemoryManager.cu) | Custom pitch-aligned GPU matrix memory allocator and host-device transfer routines. |
 
 ---
 
