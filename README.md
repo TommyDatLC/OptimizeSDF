@@ -209,6 +209,13 @@ $$
 
 To transform raw distances into a smooth heat map, the pipeline runs normalization and adjacency graph construction in parallel on separate CUDA streams before a final bilateral smoothing pass.
 
+#### Step-by-Step SDF Post-Processing Pipeline
+
+| (a) Raw SDF | (b) Normalized SDF | (c) Smoothed SDF |
+| :---: | :---: | :---: |
+| <img src="image/no_normalization.png" width="100%"> | <img src="image/normalization.png" width="100%"> | <img src="image/smoothed.png" width="100%"> |
+| *Raw unscaled distance values directly from ray tracing.* | *Logarithmic min-max scaling mapping values to $[0, 1]$.* | *3x anisotropic bilateral filtering preserving sharp features.* |
+
 #### 4.1 Normalize SDF ([`SDFKernels.cuh`](file:///e:/Code/FinalProject/src/Optix/SDFKernels.cuh))
 
 ##### 1. Min-Max Scaling
