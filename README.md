@@ -92,168 +92,120 @@ This repository contains the full implementation for the following thesis chapte
 
 ## Methodology & Algorithmic Foundations
 
-The Shape Diameter Function (SDF) pipeline transforms raw 3D polygon meshes into smooth, surface-aligned volumetric thickness values. The process is divided into six mathematically rigorous stages executed entirely on the GPU.
-
----
-
-### 1. Vertex Normal Accumulation & Local Tangent Frame Construction
-
-To cast inward-facing sampling cones from surface points, the system first calculates area-weighted vertex normals and establishes an orthonormal local coordinate frame for every vertex.
-
-#### Area-Weighted Face Normals
-For a triangle face $f$ with vertices $(\mathbf{v}_0, \mathbf{v}_1, \mathbf{v}_2)$, the unnormalized face normal vector $\mathbf{N}_{\text{face}}$ has magnitude equal to twice the triangle area:
-$$\mathbf{N}_{\text{face}} = (\mathbf{v}_1 - \mathbf{v}_0) \times (\mathbf{v}_2 - \mathbf{v}_0)$$
-
-In [`ModelHelper.cu`](file:///e:/Code/FinalProject/Core/ModelHelper.cu), the `computeNormalsKernel` utilizes CUDA atomic additions (`atomicAdd`) to safely accumulate face normals into adjacent vertex buffers across concurrent GPU threads:
-$$\mathbf{N}_v = \text{normalize}\left(\sum_{f \in \text{Faces}(v)} \mathbf{N}_{\text{face}}\right)$$
-
-#### Local Orthonormal Tangent Frame ($\mathbf{T}, \mathbf{B}, \mathbf{N}$)
-To align local cone sampling rays with the inward surface normal $-\mathbf{N}_v$, an orthonormal basis $(\mathbf{T}, \mathbf{B}, -\mathbf{N}_v)$ is constructed without trigonometric overhead using the singularity-free Frisvad method:
-$$\mathbf{T} = \begin{cases} 
-\left(0, -1, 0\right) & \text{if } N_z > 0.99999 \\
-\text{normalize}\left( \mathbf{N}_v \times (0, 0, 1) \right) & \text{otherwise}
-\end{cases}, \quad \mathbf{B} = \mathbf{N}_v \times \mathbf{T}$$
-
----
-
-### 2. Quasi-Random Sampling & Spherical Cone Mapping
-
-Instead of uniform grid or random Monte Carlo sampling, ray directions inside the interior cone are generated via a 2D **Hammersley low-discrepancy sequence** ($R = 64$ rays per vertex) to maximize angular coverage and minimize variance.
-
-#### 2D Hammersley Sequence
-For ray index $i \in \{0, 1, \dots, R-1\}$, the sample pair $(x_i, y_i) \in [0, 1)^2$ is computed as:
-$$x_i = \frac{i}{R}, \quad y_i = \Phi_2(i) = \sum_{k=0}^{\lfloor \log_2 i \rfloor} b_k \cdot 2^{-(k+1)}$$
-where $\Phi_2(i)$ is the Radical Inverse Function in base 2 (Van der Corput sequence).
-
-#### Spherical Cone Projection ($\theta_{\text{max}} = 150^\circ$)
-Each sample pair $(x_i, y_i)$ is mapped to polar coordinates $(\theta_i, \phi_i)$ within a cone aperture of $\theta_{\text{max}} = 150^\circ$ ($2.61799 \text{ rad}$):
-$$\theta_i = x_i \cdot \frac{\theta_{\text{max}}}{2}, \quad \phi_i = 2\pi y_i$$
-
-The local 3D direction vector $\mathbf{d}_{\text{local}}$ is transformed into world coordinates $\mathbf{d}_{\text{world}}$ inside [`SDFOptix.cu`](file:///e:/Code/FinalProject/src/Optix/SDFOptix.cu) via matrix multiplication:
-$$\mathbf{d}_{\text{local}} = \begin{pmatrix} \sin\theta_i \cos\phi_i \\ \sin\theta_i \sin\phi_i \\ \cos\theta_i \end{pmatrix}, \quad \mathbf{d}_{\text{world}} = d_x \mathbf{T} + d_y \mathbf{B} + d_z (-\mathbf{N}_v)$$
-
----
-
-### 3. OptiX Hardware Ray Tracing & Angle-Weighted SDF Aggregation
-
-#### RT Core Acceleration
-Rays are launched via `optixTrace` through a hardware-built Geometry Acceleration Structure (GAS) BVH ([`OptixRunner.cuh`](file:///e:/Code/FinalProject/src/Optix/OptixRunner.cuh)). Face culling is disabled (`OPTIX_RAY_FLAG_DISABLE_ANYHIT`) so rays correctly hit interior mesh walls from both front and back faces. The closest intersection distance $d_i$ is extracted in `__closesthit__sdf` using `optixGetRayTmax()`.
-
-#### Weighted Raw SDF Computation
-Ray travel distances $d_i$ are aggregated per vertex in `GPUComputeRawSDF` ([`SDFKernels.cuh`](file:///e:/Code/FinalProject/src/Optix/SDFKernels.cuh)). Rays failing to hit geometry or exceeding maximum bounding box threshold are excluded. Valid hits are weighted inversely proportional to their deflection angle $\theta_i$:
-$$w_i = \frac{1}{\theta_i + \epsilon}$$
-$$SDF_{\text{raw}}(v) = \frac{\sum_{i=1}^{R_{\text{hit}}} d_i \cdot w_i}{\sum_{i=1}^{R_{\text{hit}}} w_i}$$
-
----
-
-### 4. Logarithmic Range Compression
-
-Raw SDF values exhibit wide dynamic ranges between thin limbs and thick body cores. Min-max normalization compresses values to $[0, 1]$, followed by non-linear logarithmic transformation ([`SDFKernels.cuh`](file:///e:/Code/FinalProject/src/Optix/SDFKernels.cuh)):
-$$\widehat{SDF}(v) = \frac{SDF_{\text{raw}}(v) - SDF_{\text{min}}}{SDF_{\text{max}} - SDF_{\text{min}}}$$
-$$SDF_{\text{log}}(v) = \frac{\ln(4.0 \cdot \widehat{SDF}(v) + 1.0)}{\ln(5.0)}$$
-
----
-
-### 5. Topology Extraction & CSR Adjacency Graph Construction
-
-To enable fast 1-ring neighbor lookups on the GPU, mesh topology is dynamically extracted and stored in Compressed Sparse Row (CSR) format:
-
-```
-Triangles (V0, V1, V2) ──► Directed Edges (V0-V1, V1-V0, ...) ──► CUB RadixSort ──► CUB Unique ──► CSR Arrays (row_offsets, col_indices)
-```
-
-1. **Edge Extraction**: For each triangle $(v_0, v_1, v_2)$, 6 directed edges are emitted into a GPU buffer.
-2. **Key-Value Sorting**: `cub::DeviceRadixSort::SortPairs` sorts edges by primary source vertex ID.
-3. **Deduplication**: `cub::DeviceSelect::Unique` filters out redundant shared manifold edges.
-4. **CSR Conversion**: Parallel prefix sum computes `row_offsets` array, defining 1-ring neighbor adjacency lists for every vertex $v_i$.
-
----
-
-### 6. Anisotropic Bilateral Surface Filtering
-
-To remove high-frequency ray sampling noise while preserving sharp geometric boundaries (e.g. joints, edges), 3 iterations of anisotropic bilateral filtering are applied over the 1-ring neighbor graph ([`SDFKernels.cuh`](file:///e:/Code/FinalProject/src/Optix/SDFKernels.cuh)).
-
-For vertex $v_i$ with 1-ring neighborhood $\mathcal{N}(i)$, the filtered value $SDF^{(k+1)}(i)$ is computed as:
-$$SDF^{(k+1)}(i) = \frac{\sum_{j \in \mathcal{N}(i)} SDF^{(k)}(j) \cdot W(i, j)}{\sum_{j \in \mathcal{N}(i)} W(i, j)}$$
-
-#### Dual Gaussian Weighting
-The weight $W(i, j)$ combines spatial distance weight $G_s$ and scalar difference weight $G_r$:
-$$W(i, j) = G_s\left(\|\mathbf{p}_i - \mathbf{p}_j\|\right) \cdot G_r\left(|SDF^{(k)}(i) - SDF^{(k)}(j)|\right)$$
-$$G_s(r) = \exp\left(-\frac{r^2}{2\sigma_s^2}\right), \quad \text{where } \sigma_s = 0.02 \cdot \text{diag}(\text{BoundingBox})$$
-$$G_r(d) = \exp\left(-\frac{d^2}{2\sigma_r^2}\right), \quad \text{where } \sigma_r = 0.1$$
-
-Ping-pong double buffering is utilized across kernel launches to avoid memory race conditions during iterative updates.
-
----
-
-## System & Software Architecture
-
-### System Execution Flow & Dual CUDA Streams
-
-The architecture leverages hardware parallelism by executing independent initialization tasks on concurrent CUDA streams before entering the OptiX hardware ray tracing pipeline.
+The Shape Diameter Function (SDF) pipeline transforms raw 3D polygon meshes into smooth, surface-aligned volumetric thickness values using NVIDIA OptiX. As detailed in Chapter 3 of the thesis report, the overall workflow is organized into four main phases: **Read OBJ Model**, **Parallel GPU Initialization**, **OptiX Ray Tracing Engine**, and **GPU Post-Processing**.
 
 ```mermaid
 flowchart TD
-    subgraph Host ["CPU Host Thread (main.cu / interface.cu)"]
-        A["Read OBJ File (Model.cu)"] --> B["Allocate Device Memory (MatrixMemoryManager)"]
-        B --> C1["Launch Stream 1: Normals"]
-        B --> C2["Launch Stream 2: OptiX GAS Build"]
+    subgraph Phase1 ["Phase 1: CPU Reading"]
+        A["Read OBJ Model (Model.cu)"]
     end
 
-    subgraph Stream1 ["CUDA Stream 1 (ModelHelper.cu)"]
-        C1 --> D1["computeNormalsKernel (atomicAdd)"]
-        D1 --> E1["normalizeNormalsKernel"]
+    subgraph Phase2 ["Phase 2: Parallel GPU Initialization (CUDA Streams)"]
+        A --> B1["Calculate Vertex Normals (ModelHelper.cu)<br/>- Area-Weighted Cross Product<br/>- atomicAdd Accumulation<br/>- Unit Normalization"]
+        A --> B2["Build BVH (OptixRunner.cuh)<br/>- optixAccelBuild<br/>- Disable Triangle Face Culling"]
     end
 
-    subgraph Stream2 ["CUDA Stream 2 / OptiX API (OptixRunner.cuh)"]
-        C2 --> D2["optixAccelComputeMemoryUsage"]
-        D2 --> E2["optixAccelBuild (GAS BVH)"]
-        E2 --> F2["Build Shader Binding Table (SBT)"]
+    subgraph Phase3 ["Phase 3: OptiX Ray Tracing Engine"]
+        B1 --> C1["Build Shader Binding Table (OptixRunner.cuh)"]
+        B2 --> C1
+        C1 --> C2["OptiX Pipeline Setup & Cone Raygen (SDFOptix.cu)<br/>- 64 Rays/Vertex, 150° Cone<br/>- Hammersley 2D Sampling<br/>- Frisvad Local Tangent Frame<br/>- Hardware RT Core Traversal"]
+        C2 --> C3["Calculate Weighted Raw SDF (SDFKernels.cuh)<br/>- Angle-Weighted Average"]
     end
 
-    E1 --> G["Sync Streams & Launch optixLaunch"]
-    F2 --> G
-
-    subgraph OptiX ["Hardware Ray Tracing Engine (SDFOptix.cu)"]
-        G --> H["__raygen__sdf_cone (Hammersley 64 Rays)"]
-        H --> I["RT Core Hardware BVH Traversal"]
-        I --> J["__closesthit__sdf (optixGetRayTmax)"]
+    subgraph Phase4 ["Phase 4: GPU Post-Processing"]
+        C3 --> D1["Normalize SDF (streamNorm)<br/>- Min-Max Scaling<br/>- Log Compression (alpha = 4.0)"]
+        C3 --> D2["Build Adjacency Graph (streamCSR)<br/>- Generate Directed Edges<br/>- CUB RadixSort & Unique<br/>- CSR Format (row_ptr, col_ind)"]
+        D1 --> E["3x Anisotropic Bilateral Smoothing (SDFKernels.cuh)<br/>- Ping-Pong Double Buffering<br/>- Spatial & Range Gaussians"]
+        D2 --> E
     end
 
-    J --> K["GPU Post-Processing (SDFKernels.cuh)"]
-
-    subgraph PostProc ["CUDA Post-Processing Engine"]
-        K --> L["GPUComputeRawSDF"]
-        L --> M["Normalize & Log Compress"]
-        M --> N["CUB RadixSort & CSR Graph Generation"]
-        N --> O["3x Anisotropic Bilateral Filter (Ping-Pong)"]
-    end
-
-    O --> P["Final Per-Vertex SDF Array"]
+    E --> F["Final Per-Vertex SDF Map"]
 ```
 
-### High-Performance Hardware Architecture Map
+---
 
-```mermaid
-graph TD
-    subgraph Hardware ["NVIDIA GPU Hardware Layer"]
-        RTCores["RT Cores (Hardware BVH Ray Intersect)"]
-        SMs["Streaming Multiprocessors (SMs)"]
-        GlobalMem["VRAM Global Memory Buffers"]
-    end
+### Phase 1: Read OBJ Model
 
-    subgraph Pipeline ["OptiX 7.6 + CUDA C++ Pipeline"]
-        direction TB
-        GAS["Geometry Acceleration Structure (GAS)"]
-        SBT["Shader Binding Table (SBT)<br/>- Raygen: __raygen__sdf_cone<br/>- Miss: __miss__sdf<br/>- Hit: __closesthit__sdf"]
-        Kernels["CUDA Kernels<br/>- Vertex Normals (atomicAdd)<br/>- CUB Graph Sorting & Deduplication<br/>- Ping-Pong Bilateral Smoothing"]
-    end
+The pipeline begins by loading raw 3D mesh data from Wavefront `.obj` files ([`Model.cu`](file:///e:/Code/FinalProject/Core/Model.cu)). A 3D surface is defined by vertex coordinates in 3D space (`v` lines) and triangular faces connecting triplets of vertices (`f` lines).
 
-    GAS --> RTCores
-    SBT --> SMs
-    Kernels --> SMs
-    SMs <--> GlobalMem
-```
+1. **Index Conversion**: OBJ files use 1-based indexing. The parser converts indices to 0-based to align with GPU memory indexing.
+2. **Matrix Upload**: Vertex positions and face connectivity indices are packed into host matrices and uploaded to GPU memory via `CopyToDevice()`:
+   $$\mathbf{V} = \begin{bmatrix} x_0 & y_0 & z_0 \\ x_1 & y_1 & z_1 \\ \vdots & \vdots & \vdots \end{bmatrix}_{|V| \times 3}, \qquad \mathbf{F} = \begin{bmatrix} v_0^0 & v_1^0 & v_2^0 \\ v_0^1 & v_1^1 & v_2^1 \\ \vdots & \vdots & \vdots \end{bmatrix}_{|F| \times 3}$$
+
+---
+
+### Phase 2: Parallel GPU Initialization
+
+To minimize pipeline startup overhead, two heavy initialization tasks are executed concurrently on independent CUDA streams (`streamNorm` and `streamBVH`):
+
+#### 2.1 Calculate Vertex Normals ([`ModelHelper.cu`](file:///e:/Code/FinalProject/Core/ModelHelper.cu))
+Vertex normals define inward directions for interior ray tracing. They are computed in two parallel GPU kernel passes:
+
+1. **Area-Weighted Face Normal Accumulation** (`GPUNormalCaculation`):  
+   For a triangle with vertices $\mathbf{v}_0, \mathbf{v}_1, \mathbf{v}_2$, the unnormalized face normal $\vec{n}_f$ is the cross product of its edge vectors $\vec{e}_1 = \mathbf{v}_1 - \mathbf{v}_0$ and $\vec{e}_2 = \mathbf{v}_2 - \mathbf{v}_0$:
+   $$\vec{n}_f = \vec{e}_1 \times \vec{e}_2$$
+   The magnitude $|\vec{n}_f|$ equals twice the triangle area, naturally weighting larger faces heavier. CUDA atomic addition (`atomicAdd`) safely accumulates face normals into adjacent vertices across concurrent threads:
+   $$\vec{N}_{v_j} = \sum_{f \in \mathcal{F}(v_j)} \vec{n}_f$$
+2. **Unit Normalization** (`GPUNormalizeVertexNormal`):  
+   Accumulated vectors are normalized to unit length:
+   $$\hat{\mathbf{n}}_v = \begin{cases} \frac{\vec{N}_v}{|\vec{N}_v|} & \text{if } |\vec{N}_v| > 0 \\ (0, 0, 1)^T & \text{otherwise} \end{cases}$$
+
+#### 2.2 Build BVH Acceleration Structure ([`OptixRunner.cuh`](file:///e:/Code/FinalProject/src/Optix/OptixRunner.cuh))
+To enable real-time ray traversal across millions of triangles, an OptiX Bounding Volume Hierarchy (BVH) Geometry Acceleration Structure (GAS) is built via `optixAccelBuild`:
+- **`OPTIX_BUILD_FLAG_PREFER_FAST_TRACE`**: Optimizes BVH tree node layout for maximum RT Core ray traversal speed.
+- **`OPTIX_GEOMETRY_FLAG_DISABLE_TRIANGLE_FACE_CULLING`**: Crucial switch enabling double-sided ray-triangle intersections, allowing inward rays to strike interior back-walls.
+
+---
+
+### Phase 3: OptiX Ray Tracing Engine
+
+#### 3.1 Build Shader Binding Table (SBT)
+The Shader Binding Table acts as a fast execution directory mapping ray tracing events to GPU device programs ([`OptixRunner.cuh`](file:///e:/Code/FinalProject/src/Optix/OptixRunner.cuh)):
+- **Raygen Record**: Pointing to `__raygen__sdf_cone` for shooting cone rays.
+- **Miss Record**: Null program, ignoring rays that miss geometry.
+- **Hitgroup Record**: Pointing to `__closesthit__sdf` for recording travel distances.
+
+#### 3.2 OptiX Pipeline Setup & Ray Generation ([`SDFOptix.cu`](file:///e:/Code/FinalProject/src/Optix/SDFOptix.cu))
+The OptiX pipeline executes the core physics simulation by launching 64 rays per vertex into the mesh interior:
+
+1. **Local Tangent Frame**: An orthonormal coordinate basis $(\mathbf{T}, \mathbf{B}, -\hat{\mathbf{n}}_v)$ is generated around the inward normal using the Frisvad method.
+2. **Hammersley 2D Low-Discrepancy Sampling**: Ray directions inside a cone aperture of $\theta_{\text{max}} = 150^\circ$ ($2.61799\text{ rad}$) are generated using the base-2 Van der Corput sequence $\Phi_2(i)$:
+   $$x_i = \frac{i}{R}, \quad y_i = \Phi_2(i) = \sum_{k=0}^{\lfloor \log_2 i \rfloor} b_k \cdot 2^{-(k+1)}, \quad \text{for } i \in \{0, \dots, 63\}$$
+   $$\theta_i = x_i \cdot \frac{\theta_{\text{max}}}{2}, \quad \phi_i = 2\pi y_i$$
+   $$\mathbf{d}_{\text{world}} = (\sin\theta_i \cos\phi_i) \mathbf{T} + (\sin\theta_i \sin\phi_i) \mathbf{B} + (\cos\theta_i) (-\hat{\mathbf{n}}_v)$$
+3. **Hardware BVH Traversal & Payload**: `optixTrace` queries RT Cores. The closest-hit program `__closesthit__sdf` records distance $d_i = \text{optixGetRayTmax()}$ into a 32-bit payload. Any-Hit programs are disabled (`OPTIX_RAY_FLAG_DISABLE_ANYHIT`) for peak hardware throughput.
+
+#### 3.3 Calculate Weighted Raw SDF ([`SDFKernels.cuh`](file:///e:/Code/FinalProject/src/Optix/SDFKernels.cuh))
+The `GPUComputeRawSDF` kernel aggregates valid ray travel distances using an angle-weighted average, where weight $w_i = \frac{1}{\theta_i + \epsilon}$ penalizes wide-angle deflections:
+$$\text{SDF}_{\text{raw}}(p) = \frac{\sum_{i=1}^{R_{\text{hit}}} d_i \cdot w_i}{\sum_{i=1}^{R_{\text{hit}}} w_i}$$
+
+---
+
+### Phase 4: GPU Post-Processing
+
+To transform raw distances into a smooth heat map, the pipeline runs normalization and adjacency graph construction in parallel on separate CUDA streams before a final bilateral smoothing pass.
+
+#### 4.1 Normalize SDF ([`SDFKernels.cuh`](file:///e:/Code/FinalProject/src/Optix/SDFKernels.cuh))
+1. **Min-Max Scaling**: `GPUComputeSDFMinMax` finds minimum ($\text{SDF}_{\min}$) and maximum ($\text{SDF}_{\max}$) values to scale raw distances to $[0, 1]$:
+   $$\hat{v} = \frac{\text{SDF}_{\text{raw}}(p) - \text{SDF}_{\min}}{\text{SDF}_{\max} - \text{SDF}_{\min}}$$
+2. **Logarithmic Compression**: `GPUApplySDFNormalization` compresses dynamic range with parameter $\alpha = 4.0$ to preserve fine details on thin geometry:
+   $$v_{\text{norm}} = \frac{\ln(4.0 \cdot \hat{v} + 1.0)}{\ln(5.0)}$$
+
+#### 4.2 Build Adjacency Graph in CSR Format ([`SDFKernels.cuh`](file:///e:/Code/FinalProject/src/Optix/SDFKernels.cuh))
+To enable 1-ring neighbor lookups without $O(|V|^2)$ memory overhead, mesh topology is packed into Compressed Sparse Row (CSR) format:
+1. `GPUGenerateEdges`: Emits 6 directed edges per triangle face.
+2. `cub::DeviceRadixSort::SortPairs`: Sorts edges by primary vertex ID on GPU.
+3. `cub::DeviceSelect::Unique`: Removes duplicate manifold edges.
+4. `GPUExtractCSR`: Converts unique edges into CSR arrays (`row_ptr` offset array `d_nbrOffsets` and `col_ind` list array `d_nbrLists`).
+
+#### 4.3 Anisotropic Bilateral Smoothing ([`SDFKernels.cuh`](file:///e:/Code/FinalProject/src/Optix/SDFKernels.cuh))
+The `AnisotropicSmoothingKernel` runs 3 iterations of bilateral filtering over the CSR 1-ring neighbor graph $\mathcal{N}(p)$ to eliminate high-frequency ray noise while preserving sharp feature boundaries:
+$$v_p^{(k+1)} = \frac{\sum_{q \in \mathcal{N}(p)} \exp\left(-\frac{\|\mathbf{x}_p - \mathbf{x}_q\|^2}{2\sigma_s^2}\right) \exp\left(-\frac{(v_p^{(k)} - v_q^{(k)})^2}{2\sigma_r^2}\right) v_q^{(k)}}{\sum_{q \in \mathcal{N}(p)} \exp\left(-\frac{\|\mathbf{x}_p - \mathbf{x}_q\|^2}{2\sigma_s^2}\right) \exp\left(-\frac{(v_p^{(k)} - v_q^{(k)})^2}{2\sigma_r^2}\right)}$$
+- **Spatial Gaussian**: $\sigma_s = 0.02 \cdot \text{diag}(\text{BoundingBox})$.
+- **Range Gaussian**: $\sigma_r = 0.1$.
+- **Ping-Pong Double Buffering**: Swaps input/output pointers (`d_sdfBuf1` $\leftrightarrow$ `d_sdfBuf2`) across iterations to prevent GPU memory race conditions.
+
+---
 
 ### Source File Responsibilities Matrix
 
