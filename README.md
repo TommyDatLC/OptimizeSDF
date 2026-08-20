@@ -12,7 +12,7 @@ Unlike the traditional approach of casting rays on a CPU, our method uses **hard
 
 ## What is the Shape Diameter Function?
 
-Introduced by Shapira et al. [1], the SDF is a per-vertex scalar measure that captures the local "thickness" of a 3D model at any point on its surface. Conceptually, consider a point **p** on the mesh surface. If one looks along the inward normal direction **−n⃗**, the SDF quantifies how far one must travel before exiting the opposite side of the object.
+Introduced by Shapira et al. [1], the SDF is a per-vertex scalar measure that captures the local "thickness" of a 3D model at any point on its surface. Conceptually, consider a point **p** on the mesh surface. If one looks along the inward normal direction $-\vec{\mathbf{n}}$, the SDF quantifies how far one must travel before exiting the opposite side of the object.
 
 However, a single ray along the inward normal may yield unreliable results on bumpy or irregular interior surfaces. To address this, the SDF casts a cone of **R rays** (typically $R = 64$) from point **p**, directed toward the interior of the model. Each ray records its travel distance $d_i$ to the opposite wall, and the final SDF value is computed as a weighted average:
 
