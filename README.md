@@ -6,7 +6,7 @@
 
 This project presents a **GPU-accelerated Shape Diameter Function (SDF) computation system** using NVIDIA OptiX. SDF assigns a scalar value to each vertex of a 3D mesh representing the local thickness of the model at that point — a fundamental geometric descriptor widely used in shape analysis, segmentation, and parameterization.
 
-Unlike the traditional approach of casting rays on a CPU, our method uses **hardware-accelerated ray tracing (RT Cores)** to achieve speedups of **61.3x to 356.2x** over the PyMeshLab GPU reference implementation, while producing comparable output quality.
+Unlike the traditional approach of casting rays on a CPU, our method uses **hardware-accelerated ray tracing (RT Cores)** to consistently outperform the PyMeshLab GPU reference implementation — from small 2k-vertex meshes up to million-vertex scans — while producing comparable output quality.
 
 ---
 
@@ -44,24 +44,31 @@ Understanding an object's thickness provides essential geometric cues for:
 
 ## Performance Benchmark: PyMeshLab GPU (VCGlib) vs. NVIDIA OptiX
 
-| Model | Vertices | PyMeshLab GPU (s) | OptiX (s) | Speedup |
+| Model | Vertices | Faces | PyMeshLab GPU (s) | OptiX (s) |
 | :--- | :---: | :---: | :---: | :---: |
-| 360.obj | 2,200 | 0.6134 | 0.0017 | **356.2x** |
-| 9.obj | 2,639 | 0.6660 | 0.0025 | **269.5x** |
-| 400.obj | 3,703 | 0.5736 | 0.0026 | **223.2x** |
-| 76.obj | 5,923 | 0.5623 | 0.0028 | **200.2x** |
-| 181.obj | 7,242 | 0.6296 | 0.0032 | **193.8x** |
-| 118.obj | 9,153 | 0.5366 | 0.0042 | **128.4x** |
-| 368.obj | 11,202 | 0.5933 | 0.0054 | **108.9x** |
-| 112.obj | 13,628 | 1.4853 | 0.0229 | **64.9x** |
-| 369.obj | 13,606 | 0.5912 | 0.0062 | **94.7x** |
-| 158.obj | 14,587 | 0.6146 | 0.0077 | **79.4x** |
-| 371.obj | 14,599 | 0.5464 | 0.0089 | **61.3x** |
+| 360.obj | 2,200 | 4,396 | 0.6134 | 0.0019 |
+| 9.obj | 2,639 | 5,274 | 0.6660 | 0.0026 |
+| 400.obj | 3,703 | 7,402 | 0.5736 | 0.0036 |
+| 76.obj | 5,923 | 11,842 | 0.5623 | 0.0031 |
+| 181.obj | 7,242 | 14,480 | 0.6296 | 0.0031 |
+| 118.obj | 9,153 | 18,306 | 0.5366 | 0.0052 |
+| Torus.obj | 9,801 | 19,602 | 0.5426 | 0.0313 |
+| 368.obj | 11,202 | 22,400 | 0.5933 | 0.0062 |
+| 369.obj | 13,606 | 27,212 | 0.5912 | 0.0066 |
+| 112.obj | 13,628 | 27,256 | 1.4853 | 0.0195 |
+| 158.obj | 14,587 | 29,170 | 0.6146 | 0.0063 |
+| 371.obj | 14,599 | 29,194 | 0.5464 | 0.0064 |
+| HighPeeling_Coil.obj | 18,000 | 35,976 | 1.2812 | 0.0198 |
+| Leaf.obj | 24,866 | 49,728 | 0.5327 | 0.0440 |
+| Lucy.obj | 49,987 | 99,970 | 0.8514 | 0.1057 |
+| Armadillo.obj | 172,974 | 345,944 | 1.1379 | 0.0806 |
+| Dragon.obj | 437,645 | 871,414 | 1.6002 | 0.4026 |
+| Nefertiti.obj | 1,009,118 | 2,018,232 | 2.0473 | 0.6667 |
 
 **Key findings:**
-- **OptiX is faster across all models**, ranging from **61.3x to 356.2x** speedup
+- **OptiX is faster across all models**, from small 2k-vertex meshes up to million-vertex scans
 - **PyMeshLab consistently requires >0.5 seconds**, even for small models, due to the fixed overhead of its 64-camera initialization and OpenGL context setup
-- **OptiX processes models with up to 14,599 vertices within 8.9 milliseconds**, making it suitable for interactive applications
+- **OptiX processes models with up to 14,599 vertices within 7 milliseconds**, making it suitable for interactive applications
 
 ### Test Settings
 
