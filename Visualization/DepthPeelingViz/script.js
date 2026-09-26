@@ -41,8 +41,11 @@ const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
 dirLight.position.set(10, 20, 10);
 scene.add(dirLight);
 
-// --- GEOMETRY ---
-const torusGeometry = new THREE.TorusGeometry(8, 3, 32, 64);
+// --- GEOMETRY (High-Peeling Coil from OBJ, normalized to fit a +-8 box) ---
+// NOTE: legacy `torus*` identifiers now hold the coil mesh (kept to minimize diff).
+let torusGeometry = null;
+let torus = null;
+let torusDepth = null;
 const torusMaterial = new THREE.MeshPhongMaterial({
     color: 0x0ea5e9,
     transparent: true,
@@ -50,10 +53,33 @@ const torusMaterial = new THREE.MeshPhongMaterial({
     wireframe: true,
     side: THREE.DoubleSide
 });
-const torus = new THREE.Mesh(torusGeometry, torusMaterial);
-torus.rotation.x = Math.PI / 2;
-scene.add(torus);
-torus.updateMatrixWorld(true);
+
+new THREE.OBJLoader().load('models/coil.obj', (obj) => {
+    let geo = obj.children[0].geometry;
+    geo.rotateX(-Math.PI / 2); // OBJ z-up -> three.js y-up
+    geo.computeBoundingBox();
+    const bb = geo.boundingBox;
+    const size = new THREE.Vector3(); bb.getSize(size);
+    const center = new THREE.Vector3(); bb.getCenter(center);
+    const s = 16 / Math.max(size.x, size.y, size.z);
+    geo.translate(-center.x, -center.y, -center.z);
+    geo.scale(s, s, s);
+    // OBJLoader geometry is non-indexed: build a per-face index so peeling can hide faces
+    geo.setIndex([...Array(geo.attributes.position.count).keys()]);
+    geo.computeVertexNormals();
+    torusGeometry = geo;
+
+    torus = new THREE.Mesh(torusGeometry, torusMaterial);
+    scene.add(torus);
+    torus.updateMatrixWorld(true);
+
+    torusDepth = new THREE.Mesh(torusGeometry, depthMaterial);
+
+    updateMultiRays(1);
+    updateUI();
+}, undefined, () => {
+    statusOverlay.textContent = 'Failed to load models/coil.obj';
+});
 
 // Highlighted Triangle Group
 let activeTriangleMesh = null;
@@ -184,7 +210,7 @@ const customDepthMaterial = new THREE.ShaderMaterial({
         void main() {
             #include <clipping_planes_fragment>
             float dist = distance(camPos, vWorldPosition);
-            float intensity = 1.0 - ((dist - 9.0) / 11.0);
+            float intensity = 1.0 - ((dist - 11.0) / 10.0);
             intensity = clamp(intensity, 0.0, 1.0);
             gl_FragColor = vec4(intensity, intensity, intensity, 1.0);
         }
@@ -192,8 +218,7 @@ const customDepthMaterial = new THREE.ShaderMaterial({
     side: THREE.DoubleSide
 });
 
-const torusDepth = new THREE.Mesh(torusGeometry, depthMaterial);
-torusDepth.rotation.x = Math.PI / 2;
+// torusDepth mesh is created in the OBJ load callback (needs loaded geometry).
 
 const hitSpheresGroup = new THREE.Group();
 scene.add(hitSpheresGroup);
@@ -259,6 +284,7 @@ function updateMultiRays(numRays) {
 }
 
 function selectCamera(camObj) {
+    if (!torus) return; // model not loaded yet
     if (activeCameraObj) {
         activeCameraObj.mesh.material = camMatNormal;
     }
@@ -429,10 +455,10 @@ function getTriangleVerticesAndColors() {
     
     const calcColor = (v) => {
         const dist = selectedDepthCamera.position.distanceTo(v);
-        // Camera is at distance 20. Torus radius is ~11. 
-        // Closest point is ~9. Torus center is ~20.
-        // Map distance 9 to 1.0 (White), and distance 20 to 0.0 (Black)
-        let intensity = 1.0 - ((dist - 9) / 11);
+        // Camera is at distance 20. Coil half-extent is ~8.
+        // Closest point is ~12. Coil center is ~20.
+        // Map distance 11 to 1.0 (White), and distance 21 to 0.0 (Black)
+        let intensity = 1.0 - ((dist - 11) / 10);
         intensity = Math.max(0, Math.min(1, intensity));
         return new THREE.Color(intensity, intensity, intensity);
     };
@@ -579,7 +605,7 @@ let pointSize = 0.05;
 const steps = [
     {
         title: "Step 1: Select a Camera & Triangle",
-        text: "You can freely click on any yellow camera cone, and then click any Triangle on the blue Torus to isolate it.",
+        text: "You can freely click on any yellow camera cone, and then click any Triangle on the blue Coil to isolate it.",
         apply: () => {
             clearRasterAnimation();
             applyPeelLevel(0);
@@ -722,8 +748,8 @@ function getSteps() {
     }
     
     activeSteps.push({
-        title: "Step 8: Peel Iteration 3 (Front Inner)",
-        text: "Wait! A Torus has a hole. The ray continues and hits the Front Inner face on the other side. So we DELETE Layer 3 triangles too!",
+        title: "Step 8: Peel Iteration 3 (Deeper Wall)",
+        text: "The coil tunnel is deep — the ray keeps going and hits a 3rd tube wall further down the tunnel. So we DELETE Layer 3 triangles too!",
         apply: () => {
             clearRasterAnimation();
             
@@ -747,8 +773,8 @@ function getSteps() {
     });
     
     activeSteps.push({
-        title: "Step 9: Peel Iteration 4 (Back Outer)",
-        text: "Finally, it hits Layer 4. We DELETE Layer 4 triangles. Now we have a clean tunnel carved straight through the entire Torus!",
+        title: "Step 9: Peel Iteration 4 (Even Deeper)",
+        text: "It hits a Layer 4 wall — we DELETE those triangles too. But the real coil has 60 layers: peeling=10 stops here and misses the deep walls, which is exactly the SDF error measured in our study!",
         apply: () => {
             clearRasterAnimation();
             
@@ -839,5 +865,4 @@ pointSizeSlider.addEventListener('input', (e) => {
     });
 });
 
-updateMultiRays(1); 
-updateUI();
+// Init (updateMultiRays + updateUI) runs in the OBJ load callback above.
