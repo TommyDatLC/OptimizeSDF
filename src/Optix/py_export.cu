@@ -1,4 +1,5 @@
 #include <optix.h>
+#include <optix_function_table_definition.h>
 #include <optix_stubs.h>
 #include <cuda_runtime.h>
 #include <iostream>
@@ -6,28 +7,33 @@
 #include <string>
 #include <vector>
 #include <cmath>
-#include "../../Core/Matrix.cuh"
-#include "../../Core/Helper.hpp"
-#include "../../Core/ModelHelper.cu"
+
 #include "OptixHostUtils.cuh"
 #include "SDFKernels.cuh"
 #include "OptixRunner.cuh"
+#include "../../Core/ModelHelper.cu"
 
 struct PyOptixState {
-    OptixDeviceContext context;
-    OptixModule module;
-    OptixProgramGroup raygenProgGroup;
-    OptixProgramGroup missProgGroup;
-    OptixProgramGroup hitProgGroup;
-    OptixPipeline pipeline;
-    CUdeviceptr d_rgSbt;
-    CUdeviceptr d_msSbt;
-    CUdeviceptr d_hgSbt;
-    OptixShaderBindingTable sbt;
+    OptixDeviceContext context = nullptr;
+    OptixModule module = nullptr;
+    OptixProgramGroup raygenProgGroup = nullptr;
+    OptixProgramGroup missProgGroup = nullptr;
+    OptixProgramGroup hitProgGroup = nullptr;
+    OptixPipeline pipeline = nullptr;
+    CUdeviceptr d_rgSbt = 0;
+    CUdeviceptr d_msSbt = 0;
+    CUdeviceptr d_hgSbt = 0;
+    OptixShaderBindingTable sbt = {};
     bool initialized = false;
 };
 
 static PyOptixState g_pyOptixState;
+
+static std::string readPtxSource(const std::string& filepath) {
+    std::ifstream file(filepath, std::ios::binary);
+    if (!file.good()) return "";
+    return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+}
 
 extern "C" __declspec(dllexport) int ComputeSDF_API(
     const float* h_vertices,
@@ -49,7 +55,7 @@ extern "C" __declspec(dllexport) int ComputeSDF_API(
         if (!g_pyOptixState.initialized) {
             optixInit();
             std::string ptxFile = (ptx_path && ptx_path[0] != '\0') ? std::string(ptx_path) : "SDFOptix.ptx";
-            std::string ptxCode = readFile(ptxFile);
+            std::string ptxCode = readPtxSource(ptxFile);
             if (ptxCode.empty()) {
                 std::cerr << "[ComputeSDF_API] Failed to read PTX file: " << ptxFile << "\n";
                 return -3;
@@ -69,51 +75,42 @@ extern "C" __declspec(dllexport) int ComputeSDF_API(
             g_pyOptixState.initialized = true;
         }
 
-        Matrix<float> vMat(num_vertices, 3, nullptr);
-        for (int i = 0; i < num_vertices; ++i) {
-            vMat.SetHost(i, 0, h_vertices[i * 3 + 0]);
-            vMat.SetHost(i, 1, h_vertices[i * 3 + 1]);
-            vMat.SetHost(i, 2, h_vertices[i * 3 + 2]);
-        }
-        vMat.CopyToDevice();
+        // Direct device memory allocation and copy (bypassing Matrix host copies)
+        float3* d_vertices = nullptr;
+        uint3* d_faces = nullptr;
+        float3* d_pointNormals = nullptr;
 
-        Matrix<unsigned int> iMat(num_faces, 3, nullptr);
-        for (int i = 0; i < num_faces; ++i) {
-            iMat.SetHost(i, 0, h_faces[i * 3 + 0]);
-            iMat.SetHost(i, 1, h_faces[i * 3 + 1]);
-            iMat.SetHost(i, 2, h_faces[i * 3 + 2]);
-        }
-        iMat.CopyToDevice();
+        CUDA_CHECK(cudaMalloc((void**)&d_vertices, num_vertices * sizeof(float3)));
+        CUDA_CHECK(cudaMemcpy(d_vertices, h_vertices, num_vertices * sizeof(float3), cudaMemcpyHostToDevice));
 
-        Matrix<float> nMat(num_vertices, 3, nullptr);
+        CUDA_CHECK(cudaMalloc((void**)&d_faces, num_faces * sizeof(uint3)));
+        CUDA_CHECK(cudaMemcpy(d_faces, h_faces, num_faces * sizeof(uint3), cudaMemcpyHostToDevice));
+
+        CUDA_CHECK(cudaMalloc((void**)&d_pointNormals, num_vertices * sizeof(float3)));
+        CUDA_CHECK(cudaMemset(d_pointNormals, 0, num_vertices * sizeof(float3)));
 
         cudaStream_t streamNormal, streamBVH;
         CUDA_CHECK(cudaStreamCreate(&streamNormal));
         CUDA_CHECK(cudaStreamCreate(&streamBVH));
 
-        CUDA_CHECK(cudaMemsetAsync(nMat.getDevicePtr(), 0, nMat.GetSize(), streamNormal));
-
         int blockSize = 256;
         int gridSizeFaces = (num_faces + blockSize - 1) / blockSize;
-        GPUNormalCaculation<<<gridSizeFaces, blockSize, 0, streamNormal>>>(
-            (const float3*)vMat.getDevicePtr(),
-            (const uint3*)iMat.getDevicePtr(),
-            num_faces,
-            (float3*)nMat.getDevicePtr()
-        );
-
         int gridSizeVerts = (num_vertices + blockSize - 1) / blockSize;
-        GPUNormalizeVertexNormal<<<gridSizeVerts, blockSize, 0, streamNormal>>>(
-            (float3*)nMat.getDevicePtr(),
-            num_vertices
-        );
 
-        float coneAngleRadian = cone_angle_deg * (3.14159265f / 180.0f);
-        CUdeviceptr d_tempBuffer, d_gasOutputBuffer;
+        GPUNormalCaculation<<<gridSizeFaces, blockSize, 0, streamNormal>>>(
+            d_vertices,
+            d_faces,
+            num_faces,
+            d_pointNormals
+        );
+        GPUNormalizeVertexNormal<<<gridSizeVerts, blockSize, 0, streamNormal>>>(d_pointNormals, num_vertices);
+
+        float coneAngleRadian = cone_angle_deg * (3.14159265358979323846f / 180.0f);
+        CUdeviceptr d_tempBuffer = 0, d_gasOutputBuffer = 0;
         OptixTraversableHandle bvhHandle = OptixRunner::BuildBVH(
             g_pyOptixState.context,
-            (CUdeviceptr)vMat.getDevicePtr(),
-            (CUdeviceptr)iMat.getDevicePtr(),
+            (CUdeviceptr)d_vertices,
+            (CUdeviceptr)d_faces,
             num_vertices, num_faces,
             d_tempBuffer, d_gasOutputBuffer, streamBVH
         );
@@ -123,22 +120,25 @@ extern "C" __declspec(dllexport) int ComputeSDF_API(
 
         float* d_rawSDF = OptixRunner::LaunchOptixAndCUB(
             num_vertices, rays_per_point, coneAngleRadian,
-            (CUdeviceptr)vMat.getDevicePtr(), (float3*)nMat.getDevicePtr(),
+            (CUdeviceptr)d_vertices, d_pointNormals,
             bvhHandle, g_pyOptixState.pipeline, g_pyOptixState.sbt
         );
 
         CUDA_CHECK(cudaFree((void*)d_tempBuffer));
         CUDA_CHECK(cudaFree((void*)d_gasOutputBuffer));
+        CUDA_CHECK(cudaFree(d_pointNormals));
         CUDA_CHECK(cudaStreamDestroy(streamNormal));
         CUDA_CHECK(cudaStreamDestroy(streamBVH));
 
         if (!use_post_processing) {
             CUDA_CHECK(cudaMemcpy(h_out_sdf, d_rawSDF, num_vertices * sizeof(float), cudaMemcpyDeviceToHost));
             CUDA_CHECK(cudaFree(d_rawSDF));
+            CUDA_CHECK(cudaFree(d_vertices));
+            CUDA_CHECK(cudaFree(d_faces));
             return 0;
         }
 
-        // Post-Processing: CSR Graph building and Anisotropic Smoothing
+        // Post-Processing: Log compression and anisotropic bilateral smoothing
         cudaStream_t streamCSR, streamNorm;
         CUDA_CHECK(cudaStreamCreate(&streamCSR));
         CUDA_CHECK(cudaStreamCreate(&streamNorm));
@@ -167,7 +167,7 @@ extern "C" __declspec(dllexport) int ComputeSDF_API(
         float initSDF[2] = {1e15f, -1e15f};
         CUDA_CHECK(cudaMemcpyAsync(d_minMaxSDF, initSDF, 2 * sizeof(float), cudaMemcpyHostToDevice, streamNorm));
 
-        GPUGenerateEdges<<<gridSizeFaces, blockSize, 0, streamCSR>>>((const uint3*)iMat.getDevicePtr(), num_faces, d_edges);
+        GPUGenerateEdges<<<gridSizeFaces, blockSize, 0, streamCSR>>>(d_faces, num_faces, d_edges);
 
         void *d_temp_sort = nullptr; size_t temp_sort_bytes = 0;
         cub::DeviceRadixSort::SortKeys(d_temp_sort, temp_sort_bytes, d_edges, d_sortedEdges, numEdges, 0, sizeof(uint64_t)*8, streamCSR);
@@ -182,7 +182,7 @@ extern "C" __declspec(dllexport) int ComputeSDF_API(
         int numUniqueEdges = 0;
         CUDA_CHECK(cudaMemcpyAsync(&numUniqueEdges, d_numUniqueEdges, sizeof(int), cudaMemcpyDeviceToHost, streamCSR));
 
-        GPUComputeBoundingBox<<<gridSizeVerts, blockSize, 0, streamNorm>>>((const float3*)vMat.getDevicePtr(), num_vertices, d_minMaxBox);
+        GPUComputeBoundingBox<<<gridSizeVerts, blockSize, 0, streamNorm>>>(d_vertices, num_vertices, d_minMaxBox);
         float h_minMaxBox[6];
         CUDA_CHECK(cudaMemcpyAsync(h_minMaxBox, d_minMaxBox, 6 * sizeof(float), cudaMemcpyDeviceToHost, streamNorm));
 
@@ -204,13 +204,12 @@ extern "C" __declspec(dllexport) int ComputeSDF_API(
         int numIterations = 3;
         float sigmaSpatial = bboxDiagonal * 0.02f;
         float sigmaRange = 0.1f;
-        float3* d_vertices_direct = (float3*)vMat.getDevicePtr();
 
         for (int iter = 0; iter < numIterations; iter++) {
             float* d_in = (iter % 2 == 0) ? d_sdfBuf1 : d_sdfBuf2;
             float* d_out = (iter % 2 == 0) ? d_sdfBuf2 : d_sdfBuf1;
             AnisotropicSmoothingKernel<<<gridSizeVerts, blockSize>>>(
-                d_vertices_direct, d_in, d_out, d_nbrOffsets, d_nbrLists,
+                d_vertices, d_in, d_out, d_nbrOffsets, d_nbrLists,
                 num_vertices, sigmaSpatial, sigmaRange
             );
             cudaDeviceSynchronize();
@@ -219,6 +218,8 @@ extern "C" __declspec(dllexport) int ComputeSDF_API(
         float* d_finalOut = (numIterations % 2 == 0) ? d_sdfBuf1 : d_sdfBuf2;
         CUDA_CHECK(cudaMemcpy(h_out_sdf, d_finalOut, num_vertices * sizeof(float), cudaMemcpyDeviceToHost));
 
+        cudaFree(d_vertices);
+        cudaFree(d_faces);
         cudaFree(d_edges); cudaFree(d_sortedEdges); cudaFree(d_temp_sort);
         cudaFree(d_uniqueEdges); cudaFree(d_numUniqueEdges); cudaFree(d_temp_unique);
         cudaFree(d_minMaxBox); cudaFree(d_minMaxSDF);

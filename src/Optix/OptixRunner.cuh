@@ -5,8 +5,6 @@
 #include <optix.h>
 #include <optix_stubs.h>
 #include <cuda_runtime.h>
-#include "../../Core/Helper.hpp"
-#include "../../Core/Matrix.cuh"
 #include "OptixHostUtils.cuh"
 #include "SDFKernels.cuh"
 #include <vector>

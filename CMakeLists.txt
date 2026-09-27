@@ -83,24 +83,16 @@ target_link_libraries(OptimizeSDF
 # ==============================================================================
 add_library(optimize_sdf SHARED
     src/Optix/py_export.cu
-    Core/Matrix.cu
-    Core/MatrixMemoryManager.cu
-    Core/MathHelper.cu
-    Core/ModelHelper.cu
 )
 target_include_directories(optimize_sdf BEFORE PRIVATE 
     ${CUDAToolkit_INCLUDE_DIRS} 
     OptiX 
     ${CMAKE_CURRENT_SOURCE_DIR}/Core
 )
-target_link_libraries(optimize_sdf PRIVATE 
-    cublas 
-    polyscope 
-    OpenCL::OpenCL
-)
 set_target_properties(optimize_sdf PROPERTIES
     CUDA_SEPARABLE_COMPILATION ON
 )
+add_dependencies(optimize_sdf OptixShaders)
 add_dependencies(optimize_sdf OptixShaders)
 
 # ==============================================================================
