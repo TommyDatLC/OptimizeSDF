@@ -1,20 +1,20 @@
 import os
-import time
+import argparse
 import numpy as np
 import pymeshlab
 import pyvista as pv
 
 OBJ_PATH = r"E:\Code\FinalProject\peeling_study\models_net\net_psb_1737_staircase.obj"
-OPTIX_SDF_PATH = r"E:\Code\FinalProject\net_psb_1737_staircase_optix.sdf"  # dumped by C++ OptiX pipeline (smoothed)
 OPT_PEELING = 164
+ITERATIONS = [1, 4, 10, OPT_PEELING]
+CACHE_DIR = r"E:\Code\FinalProject\peeling_study\models_net\cache_sdf"
 
-print(f"Loading mesh: {OBJ_PATH}")
-mesh_base = pv.read(OBJ_PATH).clean()
-n_verts = mesh_base.n_points
-print(f"Vertices: {n_verts}, Faces: {mesh_base.n_cells}")
+def compute_or_load_sdf(obj_path, peeling, n_verts):
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    cache_file = os.path.join(CACHE_DIR, f"1737_peeling_{peeling}.npy")
+    if os.path.exists(cache_file):
+        return np.load(cache_file)
 
-def compute_sdf(obj_path, peeling):
-    t0 = time.time()
     ms = pymeshlab.MeshSet()
     ms.load_new_mesh(obj_path)
     ms.apply_filter(
@@ -25,74 +25,66 @@ def compute_sdf(obj_path, peeling):
         removeoutliers=False,
         peelingiteration=peeling
     )
-    arr = np.array(ms.current_mesh().vertex_scalar_array())
-    t1 = time.time()
-    print(f"Computed SDF (peeling={peeling}) in {t1 - t0:.3f}s")
+    arr = np.array(ms.current_mesh().vertex_scalar_array())[:n_verts]
+    np.save(cache_file, arr)
     return arr
 
-print("Computing SDF at peeling=10...")
-sdf_10 = compute_sdf(OBJ_PATH, 10)
+def main():
+    parser = argparse.ArgumentParser(description="Preview Depth Peeling on 1737 Staircase (1, 4, 10, 164)")
+    parser.add_argument("--save", type=str, default=None, help="Lưu ảnh screenshot")
+    parser.add_argument("--off_screen", action="store_true", help="Chạy ẩn không mở cửa sổ GUI")
+    args = parser.parse_args()
 
-print(f"Computing SDF at peeling={OPT_PEELING} (OPT)...")
-sdf_opt = compute_sdf(OBJ_PATH, OPT_PEELING)
+    mesh_base = pv.read(OBJ_PATH).clean()
+    n_verts = mesh_base.n_points
 
-diff = np.abs(sdf_10 - sdf_opt)
+    sdf_results = {it: compute_or_load_sdf(OBJ_PATH, it, n_verts) for it in ITERATIONS}
 
-print(f"Loading OptiX SDF: {OPTIX_SDF_PATH}")
-optix_raw = np.loadtxt(OPTIX_SDF_PATH, delimiter=",")
-sdf_optix = optix_raw[:, 1] if optix_raw.ndim > 1 else optix_raw
-assert len(sdf_optix) == n_verts, f"OptiX SDF count {len(sdf_optix)} != verts {n_verts}"
-print(f"OptiX SDF: min={sdf_optix.min():.4f} max={sdf_optix.max():.4f} mean={sdf_optix.mean():.4f} (smoothed dump)")
+    # Thang màu đồng bộ cho cả 4 cửa sổ để dễ quan sát sự khác biệt
+    all_vals = np.concatenate([sdf_results[it] for it in ITERATIONS])
+    clim = (float(np.min(all_vals)), float(np.percentile(all_vals, 98)))
 
-def minmax(v):
-    lo, hi = float(v.min()), float(v.max())
-    return (v - lo) / (hi - lo) if hi > lo else np.zeros_like(v)
-
-agree = np.abs(minmax(sdf_opt) - minmax(sdf_optix))
-print(f"Agreement |PML_OPT-OptiX| (both min-max norm): mean={agree.mean():.4f} max={agree.max():.4f}")
-
-# Color limits (PyMeshLab pair shares one scale; OptiX/agreement have their own, labeled)
-both = np.concatenate([sdf_10, sdf_opt])
-lo_sdf = float(np.min(both))
-hi_sdf = float(np.percentile(both, 98))
-hi_diff = float(np.percentile(diff, 98)) or float(np.max(diff))
-hi_optix = float(np.percentile(sdf_optix, 98)) or float(np.max(sdf_optix))
-hi_agree = float(np.percentile(agree, 98)) or float(np.max(agree))
-
-# Setup 2x2 plotter
-pl = pv.Plotter(shape=(2, 2), window_size=(1800, 1000), title="1737 staircase: PyMeshLab (10 vs 164) + OptiX SDF")
-
-panels = [
-    (0, 0, sdf_10, (lo_sdf, hi_sdf), "turbo", "PyMeshLab SDF (Peeling = 10)"),
-    (0, 1, sdf_opt, (lo_sdf, hi_sdf), "turbo", f"PyMeshLab SDF (Peeling = {OPT_PEELING} OPT)"),
-    (1, 0, sdf_optix, (0.0, hi_optix), "turbo", "OptiX SDF (smoothed dump)"),
-    (1, 1, agree, (0.0, hi_agree), "inferno", "Agreement |PML_OPT - OptiX| (both min-max norm)"),
-]
-
-for r, c, vals, clim, cmap, title in panels:
-    m = mesh_base.copy()
-    m.point_data["SDF"] = vals
-    pl.subplot(r, c)
-    pl.add_mesh(
-        m,
-        scalars="SDF",
-        cmap=cmap,
-        clim=clim,
-        show_edges=False,
-        scalar_bar_args={"title": title, "vertical": True, "title_font_size": 11, "label_font_size": 9}
+    pl = pv.Plotter(
+        shape=(1, 4),
+        window_size=(1920, 600),
+        title="1737 Staircase: So sánh Depth Peeling (1, 4, 10 vs 164 iterations)",
+        off_screen=args.off_screen
     )
-    pl.add_text(title, font_size=12, position='upper_left', color='white', shadow=True)
 
-# Add stats overlay on top-left panel
-stats_text = (
-    f"Model: net_psb_1737_staircase | Vertices: {n_verts}\n"
-    f"Depth: 164 | PML peeled-diff: mean 0.00214 median 0.00083 max 0.29580\n"
-    f"OptiX: mean {sdf_optix.mean():.4f} max {sdf_optix.max():.4f} | Agreement mean {agree.mean():.4f} max {agree.max():.4f}\n"
-    f"[Controls: Rotate/Zoom syncs all panels | Link Sync ON]"
-)
-pl.subplot(0, 0)
-pl.add_text(stats_text, font_size=9, position='lower_left', color='cyan', shadow=True)
+    panel_configs = [
+        (0, 1, "Peeling = 1 iteration"),
+        (1, 4, "Peeling = 4 iterations"),
+        (2, 10, "Peeling = 10 iterations (PyMeshLab Default)"),
+        (3, OPT_PEELING, f"Peeling = {OPT_PEELING} iterations (Optimal / Ground Truth)"),
+    ]
 
-pl.link_views()
-print("Opening interactive preview window (close window when done)...")
-pl.show()
+    for col_idx, it, title in panel_configs:
+        pl.subplot(0, col_idx)
+        m = mesh_base.copy()
+        m.point_data["SDF"] = sdf_results[it]
+        pl.add_mesh(
+            m,
+            scalars="SDF",
+            cmap="turbo",
+            clim=clim,
+            show_edges=False,
+            scalar_bar_args={
+                "title": "SDF",
+                "vertical": True,
+                "title_font_size": 10,
+                "label_font_size": 8
+            }
+        )
+        pl.add_text(title, font_size=11, position="upper_left", color="white", shadow=True)
+
+    # Đồng bộ góc quay camera cho cả 4 panel cùng một hàng
+    pl.link_views()
+
+    if args.save:
+        pl.show(screenshot=args.save)
+        print(f"Saved preview screenshot to: {args.save}")
+    else:
+        pl.show()
+
+if __name__ == "__main__":
+    main()
