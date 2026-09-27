@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "optimize_sdf"
+version = "1.0.0"
+description = "GPU-accelerated Shape Diameter Function using NVIDIA OptiX RT Cores"
+dependencies = [
+    "numpy",
+]
+requires-python = ">=3.8"
