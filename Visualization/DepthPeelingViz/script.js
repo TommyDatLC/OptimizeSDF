@@ -774,7 +774,7 @@ function getSteps() {
     
     activeSteps.push({
         title: "Step 9: Peel Iteration 4 (Even Deeper)",
-        text: "It hits a Layer 4 wall — we DELETE those triangles too. But the real coil has 60 layers: peeling=10 stops here and misses the deep walls, which is exactly the SDF error measured in our study!",
+        text: "It hits a Layer 4 wall — we DELETE those triangles too. Keep clicking Next: peeling continues with no fixed limit until the ray exits!",
         apply: () => {
             clearRasterAnimation();
             
@@ -797,6 +797,36 @@ function getSteps() {
         }
     });
     
+    // Peel with NO fixed limit: walk every layer the selected ray actually hits
+    const maxPeel = currentIntersects.length;
+    for (let L = 5; L <= maxPeel; L++) {
+        const stepNo = activeSteps.length + 1;
+        const isLast = (L === maxPeel);
+        activeSteps.push({
+            title: isLast ? `Step ${stepNo}: Peel Iteration ${L} (ray exits!)`
+                           : `Step ${stepNo}: Peel Iteration ${L} (Layer ${L})`,
+            text: isLast ? (maxPeel > 10
+                          ? `After ${maxPeel} peels the ray finally exits the coil. peeling=10 (our benchmark default) would have stopped at layer 10 and missed the remaining ${maxPeel - 10} — exactly the SDF error measured in our study!`
+                          : `After ${maxPeel} peels the ray exits — a clean tunnel carved straight through!`)
+                          : `Peel pass #${L}: capture Layer ${L}, then DELETE those triangles to expose the wall behind. About ${maxPeel - L} layers to go on this ray.`,
+            apply: () => {
+                clearRasterAnimation();
+                applyPeelLevel(L - 1);
+                renderDepth(depthMaterial, [], `Captured: Peel Layer ${L}`);
+                applyPeelLevel(L);
+                customDepthMaterial.uniforms.camPos.value.copy(selectedDepthCamera.position);
+                customDepthMaterial.side = THREE.DoubleSide;
+                customDepthMaterial.transparent = false;
+                customDepthMaterial.opacity = 1.0;
+                customDepthMaterial.depthWrite = true;
+                torus.material = customDepthMaterial;
+                torus.material.clippingPlanes = [];
+                hitSpheres.forEach((s, i) => s.visible = (i === L));
+                monitorStatus.style.color = (L % 2 === 1) ? '#10b981' : '#8b5cf6';
+            }
+        });
+    }
+
     return activeSteps;
 }
 
@@ -817,6 +847,9 @@ function updateUI() {
         valFront.textContent = currentIntersects.length > 0 ? currentIntersects[0].distance.toFixed(2) : "-"; 
         valBack.textContent = currentIntersects.length > 1 ? currentIntersects[1].distance.toFixed(2) : "-"; 
         valSDF.textContent = currentIntersects.length > 1 ? (currentIntersects[1].distance - currentIntersects[0].distance).toFixed(2) : "-";
+    } else {
+        // Deeper peel iterations: front/back semantics no longer apply, reset stale values
+        valFront.textContent = "-"; valBack.textContent = "-"; valSDF.textContent = "-";
     }
 
     btnPrev.disabled = currentStep === 0;
