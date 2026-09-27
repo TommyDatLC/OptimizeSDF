@@ -7,3 +7,11 @@ latex/*.log
 latex/*.out
 latex/*.pdf
 latex/build_*.txt
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+
